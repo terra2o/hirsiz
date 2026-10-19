@@ -90,6 +90,7 @@ Room :: struct {
 
 Dungeon_Config :: struct {
 	seed:              u64,
+	depth:             int,
 	width:             int,
 	height:            int,
 	max_rooms:         int,
@@ -99,9 +100,10 @@ Dungeon_Config :: struct {
 	door_chance:       f32, // chance for corridor-room entrance to have a door
 }
 
-default_dungeon_config :: proc(seed: u64 = 0) -> Dungeon_Config {
+default_dungeon_config :: proc(seed: u64 = 0, depth: int = 1) -> Dungeon_Config {
 	return Dungeon_Config {
 		seed = seed,
+		depth = depth,
 		width = DUNGEON_WIDTH,
 		height = DUNGEON_HEIGHT,
 		max_rooms = 30,
@@ -119,6 +121,7 @@ Dungeon :: struct {
 	visible:         []bool,
 	explored:        []bool,
 	rooms:           [dynamic]Room,
+	enemies:         [dynamic]Enemy,
 	stairs_up_pos:   [2]int,
 	stairs_down_pos: [2]int,
 }
@@ -128,6 +131,7 @@ destroy_dungeon :: proc(d: ^Dungeon) {
 	delete(d.visible)
 	delete(d.explored)
 	delete(d.rooms)
+	delete(d.enemies)
 }
 
 dungeon_in_bounds :: proc(d: ^Dungeon, x, y: int) -> bool {
@@ -483,6 +487,56 @@ generate_dungeon :: proc(config: Dungeon_Config) -> Dungeon {
 	generate_walls(&dungeon)
 	place_doors(&dungeon, config.door_chance, rng)
 	place_stairs(&dungeon, rng)
+	place_enemies(&dungeon, config.depth, rng)
 
 	return dungeon
+}
+
+place_enemies :: proc(d: ^Dungeon, depth: int, rng: rand.Generator) {
+	if len(d.rooms) <= 1 do return
+
+	enemy_id := 1
+
+	// skip room 0 where the player / stairs up usually start
+	for r_idx in 1 ..< len(d.rooms) {
+		room := d.rooms[r_idx]
+		// spawn 1 to 3 enemies per room depending on room area
+		area := room.w * room.h
+		max_spawn := 1
+		if area > 40 do max_spawn = 2
+		if area > 80 do max_spawn = 3
+
+		num_enemies := rand.int_range(0, max_spawn + 1, rng)
+		for _ in 0 ..< num_enemies {
+			for attempt in 0 ..< 10 {
+				ex := rand.int_range(room.x + 1, room.x + room.w - 1, rng)
+				ey := rand.int_range(room.y + 1, room.y + room.h - 1, rng)
+
+				tile := dungeon_get_tile(d, ex, ey)
+				if !tile.walkable do continue
+
+				// don't spawn on stairs
+				if (ex == d.stairs_up_pos.x && ey == d.stairs_up_pos.y) ||
+				   (ex == d.stairs_down_pos.x && ey == d.stairs_down_pos.y) {
+					continue
+				}
+
+				// check if another enemy is already placed here
+				spot_taken := false
+				for &other in d.enemies {
+					if other.x == ex && other.y == ey {
+						spot_taken = true
+						break
+					}
+				}
+				if spot_taken do continue
+
+				kind := pick_random_enemy_kind(depth, rng)
+				enemy := create_enemy(kind, ex, ey, enemy_id)
+				enemy_id += 1
+				append(&d.enemies, enemy)
+				break
+			}
+		}
+	}
 }

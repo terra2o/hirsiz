@@ -144,22 +144,38 @@ main :: proc() {
 					)
 				} else if tile.type == .Wall {
 					line_col := is_vis ? rl.Color{45, 40, 50, 255} : rl.Color{20, 18, 25, 255}
-					rl.DrawRectangleLines(
-						i32(rect.x),
-						i32(rect.y),
-						tile_size,
-						tile_size,
-						line_col,
-					)
+					rl.DrawRectangleLines(i32(rect.x), i32(rect.y), tile_size, tile_size, line_col)
 				} else if tile.type == .Floor {
 					line_col := is_vis ? rl.Color{160, 140, 115, 60} : rl.Color{60, 50, 45, 40}
-					rl.DrawRectangleLines(
-						i32(rect.x),
-						i32(rect.y),
-						tile_size,
-						tile_size,
-						line_col,
-					)
+					rl.DrawRectangleLines(i32(rect.x), i32(rect.y), tile_size, tile_size, line_col)
+				}
+			}
+		}
+
+		// render living enemies
+		for &enemy in d.enemies {
+			if !enemy.is_alive do continue
+
+			idx := enemy.y * d.width + enemy.x
+			if !d.visible[idx] do continue
+
+			def := core.ENEMY_DEFS[enemy.kind]
+			ex := i32(enemy.x) * tile_size
+			ey := i32(enemy.y) * tile_size
+
+			enemy_col := rl.Color{def.color.r, def.color.g, def.color.b, 255}
+			rl.DrawRectangle(ex + 2, ey + 2, tile_size - 4, tile_size - 4, enemy_col)
+
+			glyph_str: [2]u8 = {u8(def.symbol), 0}
+			rl.DrawText(cstring(&glyph_str[0]), ex + 10, ey + 4, 22, rl.WHITE)
+
+			// health bar above enemy if wounded
+			if enemy.hp < enemy.max_hp {
+				bar_w := tile_size - 4
+				hp_w := i32(f32(bar_w) * f32(enemy.hp) / f32(enemy.max_hp))
+				rl.DrawRectangle(ex + 2, ey - 3, i32(bar_w), 3, rl.RED)
+				if hp_w > 0 {
+					rl.DrawRectangle(ex + 2, ey - 3, hp_w, 3, rl.GREEN)
 				}
 			}
 		}
@@ -172,14 +188,16 @@ main :: proc() {
 
 		// hud overlay
 		hud_text := rl.TextFormat(
-			"Dungeon Level: %d | Turn: %d | Pos: (%d, %d)",
+			"HP: %d/%d | Depth: %d | Turn: %d | Pos: (%d, %d)",
+			state.player_hp,
+			state.player_max_hp,
 			state.depth,
 			state.turn_count,
 			state.player_x,
 			state.player_y,
 		)
-		rl.DrawRectangle(10, 10, 520, 70, rl.Color{0, 0, 0, 180})
-		rl.DrawRectangleLines(10, 10, 520, 70, rl.Color{100, 100, 120, 200})
+		rl.DrawRectangle(10, 10, 580, 70, rl.Color{0, 0, 0, 180})
+		rl.DrawRectangleLines(10, 10, 580, 70, rl.Color{100, 100, 120, 200})
 		rl.DrawText(hud_text, 20, 18, 20, rl.GOLD)
 
 		if len(state.status_message) > 0 {
