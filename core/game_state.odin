@@ -3,18 +3,19 @@ package core
 import "core:fmt"
 
 Game_State :: struct {
-	player_x:       int,
-	player_y:       int,
-	player_hp:      int,
-	player_max_hp:  int,
-	player_attack:  int,
-	player_defense: int,
-	depth:          int, // current dungeon floor level (starts at 1)
-	turn_count:     int,
-	is_running:     bool,
-	status_message: string,
-	dungeon:        Dungeon,
-	floors:         map[int]Dungeon,
+	player_x:           int,
+	player_y:           int,
+	player_hp:          int,
+	player_max_hp:      int,
+	player_attack:      int,
+	player_defense:     int,
+	player_last_attack: int, // player last attacked / got attacked
+	depth:              int, // current dungeon floor level (starts at 1)
+	turn_count:         int,
+	is_running:         bool,
+	status_message:     string,
+	dungeon:            Dungeon,
+	floors:             map[int]Dungeon,
 }
 
 init_game :: proc(seed: u64 = 0) -> Game_State {
@@ -43,6 +44,7 @@ init_game :: proc(seed: u64 = 0) -> Game_State {
 		player_max_hp = 20,
 		player_attack = 5,
 		player_defense = 1,
+		player_last_attack = 0,
 		depth = depth,
 		turn_count = 0,
 		is_running = true,
@@ -115,6 +117,7 @@ step_enemy_turns :: proc(state: ^Game_State) {
 			damage := def.attack - state.player_defense
 			if damage < 1 do damage = 1
 			state.player_hp -= damage
+			state.player_last_attack = 0
 			if state.player_hp <= 0 {
 				state.player_hp = 0
 				state.status_message = fmt.tprintf(
@@ -164,14 +167,29 @@ step_enemy_turns :: proc(state: ^Game_State) {
 	}
 }
 
+player_regen :: proc(state: ^Game_State) {
+	if state.player_hp < state.player_max_hp {
+		state.player_hp += 1
+	}
+}
+
+check_regen :: proc(state: ^Game_State) {
+	if state.player_last_attack >= 10 {
+		player_regen(state)
+	}
+}
+
 step_turn :: proc(state: ^Game_State, dx: int, dy: int) {
 	new_x := state.player_x + dx
 	new_y := state.player_y + dy
+
+	state.player_last_attack += 1
 
 	// 1. check for bump attack on enemy
 	target_enemy := find_enemy_at(&state.dungeon, new_x, new_y)
 	if target_enemy != nil {
 		player_attack(state, target_enemy)
+		state.player_last_attack = 0
 		state.turn_count += 1
 		step_enemy_turns(state)
 		state.floors[state.depth] = state.dungeon
@@ -207,6 +225,7 @@ step_turn :: proc(state: ^Game_State, dx: int, dy: int) {
 			state.status_message = ""
 		}
 
+		check_regen(state)
 		step_enemy_turns(state)
 		state.floors[state.depth] = state.dungeon
 	}
