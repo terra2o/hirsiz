@@ -1,0 +1,62 @@
+name: Build
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: hirsiz-linux
+            binary_name: hirsiz
+          - os: macos-latest
+            artifact_name: hirsiz-macos
+            binary_name: hirsiz
+          - os: windows-latest
+            artifact_name: hirsiz-windows
+            binary_name: hirsiz.exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgl1-mesa-dev \
+            libx11-dev \
+            libxrandr-dev \
+            libxi-dev \
+            libxcursor-dev \
+            libxinerama-dev \
+            libasound2-dev
+
+      - name: Setup Odin
+        uses: laytan/setup-odin@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build
+        shell: bash
+        run: |
+          mkdir -p dist
+          odin build app_raylib -out:dist/${{ matrix.binary_name }} -o:speed
+          if [ -d "assets" ]; then
+            cp -r assets dist/
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: dist/
