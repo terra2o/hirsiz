@@ -17,8 +17,27 @@ main :: proc() {
 	rl.SetWindowMinSize(640, 360)
 	rl.SetTargetFPS(60)
 
-	state := core.init_game()
-	defer core.destroy_game(&state)
+	state: core.Game_State
+	save_data, load_ok, clean_session := core.load_game()
+	if load_ok {
+		state = core.restore_game_from_save(&save_data)
+		if !clean_session {
+			state.status_message = "Resumed after abnormal exit (crash/force quit detected)."
+		} else {
+			state.status_message = "Game loaded."
+		}
+	} else {
+		state = core.init_game()
+	}
+	defer {
+		if state.player_hp > 0 {
+			core.auto_save_game(&state)
+		} else {
+			// remove save file when player dies
+			core.delete_save_file()
+		}
+		core.destroy_game(&state)
+	}
 
 	tile_size :: 32
 
@@ -51,9 +70,13 @@ main :: proc() {
 		shift_held := rl.IsKeyDown(.LEFT_SHIFT) || rl.IsKeyDown(.RIGHT_SHIFT)
 
 		if (shift_held && rl.IsKeyPressed(.PERIOD)) || rl.IsKeyPressed(.PAGE_DOWN) {
-			core.go_down_stairs(&state)
+			if core.go_down_stairs(&state) {
+				core.auto_save_game(&state)
+			}
 		} else if (shift_held && rl.IsKeyPressed(.COMMA)) || rl.IsKeyPressed(.PAGE_UP) {
-			core.go_up_stairs(&state)
+			if core.go_up_stairs(&state) {
+				core.auto_save_game(&state)
+			}
 		}
 
 		if dx != 0 || dy != 0 {
@@ -80,7 +103,12 @@ main :: proc() {
 		}
 
 		if dx != 0 || dy != 0 {
+			prev_turns := state.turn_count
 			core.step_turn(&state, dx, dy)
+			// auto-save periodically every 10 turns
+			if state.turn_count != prev_turns && state.turn_count % 10 == 0 {
+				core.auto_save_game(&state)
+			}
 		}
 
 		px := i32(state.player_x) * tile_size

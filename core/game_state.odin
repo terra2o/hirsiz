@@ -1,12 +1,32 @@
 package core
 
+import "core:crypto"
 import "core:fmt"
 
+floor_seed :: proc(base_seed: u64, depth: int) -> u64 {
+	z := base_seed ~ (u64(depth) * 0x9e3779b97f4a7c15)
+	z = (z ~ (z >> 30)) * 0xbf58476d1ce4e5b9
+	z = (z ~ (z >> 27)) * 0x94d049bb133111eb
+	res := z ~ (z >> 31)
+	if res == 0 do res = 1
+	return res
+}
+
+generate_random_seed :: proc() -> u64 {
+	buf: [8]u8
+	crypto.rand_bytes(buf[:])
+	token := (^u64)(&buf[0])^
+	if token == 0 do token = 1337
+	return token
+}
+
 Game_State :: struct {
+	seed:               u64,
 	player_x:           int,
 	player_y:           int,
 	player_hp:          int,
 	player_max_hp:      int,
+	player_gold:        u32,
 	player_attack:      int,
 	player_defense:     int,
 	player_last_attack: int, // player last attacked / got attacked
@@ -19,10 +39,15 @@ Game_State :: struct {
 }
 
 init_game :: proc(seed: u64 = 0) -> Game_State {
+	actual_seed := seed
+	if actual_seed == 0 {
+		actual_seed = generate_random_seed()
+	}
+
 	floors := make(map[int]Dungeon)
 
 	depth := 1
-	cfg := default_dungeon_config(seed != 0 ? seed + u64(depth) : 0, depth)
+	cfg := default_dungeon_config(floor_seed(actual_seed, depth), depth)
 	dung := generate_dungeon(cfg)
 	floors[depth] = dung
 
@@ -38,10 +63,12 @@ init_game :: proc(seed: u64 = 0) -> Game_State {
 	floors[depth] = dung
 
 	return Game_State {
+		seed = actual_seed,
 		player_x = spawn_x,
 		player_y = spawn_y,
 		player_hp = 20,
 		player_max_hp = 20,
+		player_gold = 0,
 		player_attack = 5,
 		player_defense = 1,
 		player_last_attack = 0,
@@ -244,7 +271,7 @@ go_down_stairs :: proc(state: ^Game_State) -> bool {
 
 	target_depth := state.depth + 1
 	if !(target_depth in state.floors) {
-		cfg := default_dungeon_config(u64(target_depth * 1000 + 42), target_depth)
+		cfg := default_dungeon_config(floor_seed(state.seed, target_depth), target_depth)
 		state.floors[target_depth] = generate_dungeon(cfg)
 	}
 
