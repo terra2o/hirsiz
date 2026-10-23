@@ -26,16 +26,41 @@ Game_State :: struct {
 	player_y:           int,
 	player_hp:          int,
 	player_max_hp:      int,
+	player_base_max_hp: int,
 	player_gold:        u32,
+	player_base_attack: int,
+	player_base_def:    int,
 	player_attack:      int,
 	player_defense:     int,
-	player_last_attack: int, // player last attacked / got attacked
-	depth:              int, // current dungeon floor level (starts at 1)
+	player_last_attack: int,
+	player_inventory:   Inventory,
+	depth:              int,
 	turn_count:         int,
 	is_running:         bool,
 	status_message:     string,
 	dungeon:            Dungeon,
 	floors:             map[int]Dungeon,
+}
+
+recompute_player_stats :: proc(state: ^Game_State) {
+	att_b, def_b, hp_b := inventory_stat_bonuses(&state.player_inventory)
+	state.player_attack = state.player_base_attack + att_b
+	state.player_defense = state.player_base_def + def_b
+
+	old_max := state.player_max_hp
+	state.player_max_hp = state.player_base_max_hp + hp_b
+	if state.player_max_hp > old_max {
+		state.player_hp += (state.player_max_hp - old_max)
+	}
+	if state.player_hp > state.player_max_hp {
+		state.player_hp = state.player_max_hp
+	}
+}
+
+get_enemy_stats :: proc(enemy: ^Enemy) -> (attack: int, defense: int) {
+	def := ENEMY_DEFS[enemy.kind]
+	att_b, def_b, _ := inventory_stat_bonuses(&enemy.inventory)
+	return def.attack + att_b, def.defense + def_b
 }
 
 init_game :: proc(seed: u64 = 0) -> Game_State {
@@ -62,23 +87,34 @@ init_game :: proc(seed: u64 = 0) -> Game_State {
 	compute_fov(&dung, spawn_x, spawn_y)
 	floors[depth] = dung
 
-	return Game_State {
-		seed = actual_seed,
-		player_x = spawn_x,
-		player_y = spawn_y,
-		player_hp = 20,
-		player_max_hp = 20,
-		player_gold = 0,
-		player_attack = 5,
-		player_defense = 1,
+	state := Game_State {
+		seed               = actual_seed,
+		player_x           = spawn_x,
+		player_y           = spawn_y,
+		player_hp          = 20,
+		player_max_hp      = 20,
+		player_base_max_hp = 20,
+		player_gold        = 0,
+		player_base_attack = 5,
+		player_base_def    = 1,
+		player_attack      = 5,
+		player_defense     = 1,
 		player_last_attack = 0,
-		depth = depth,
-		turn_count = 0,
-		is_running = true,
-		status_message = "Welcome to hirsiz! Press < or > to use stairs.",
-		dungeon = dung,
-		floors = floors,
+		depth              = depth,
+		turn_count         = 0,
+		is_running         = true,
+		status_message     = "Welcome to hirsiz! Press < or > to use stairs.",
+		dungeon            = dung,
+		floors             = floors,
 	}
+
+	force_equip(&state.player_inventory, .Rusty_Dagger)
+	force_equip(&state.player_inventory, .Cloth_Tunic)
+	force_equip(&state.player_inventory, .Leather_Boots)
+	inventory_add(&state.player_inventory, .Health_Potion)
+	recompute_player_stats(&state)
+
+	return state
 }
 
 destroy_game :: proc(state: ^Game_State) {
@@ -107,17 +143,44 @@ is_tile_blocked :: proc(state: ^Game_State, x, y: int) -> bool {
 
 player_attack :: proc(state: ^Game_State, enemy: ^Enemy) {
 	def := ENEMY_DEFS[enemy.kind]
-	damage := state.player_attack - def.defense
+	_, enemy_def := get_enemy_stats(enemy)
+	damage := state.player_attack - enemy_def
 	if damage < 1 do damage = 1
 
 	enemy.hp -= damage
 	if enemy.hp <= 0 {
 		enemy.is_alive = false
-		state.status_message = fmt.tprintf(
-			"You attack %s for %d damage and kill it!",
-			def.name,
-			damage,
-		)
+
+		loot_item: Item_Kind = .None
+		for slot in Equipment_Slot {
+			if enemy.inventory.equipment[slot] != .None {
+				loot_item = enemy.inventory.equipment[slot]
+				break
+			}
+		}
+		if loot_item == .None && enemy.inventory.item_count > 0 {
+			for it in enemy.inventory.items {
+				if it != .None {
+					loot_item = it
+					break
+				}
+			}
+		}
+
+		if loot_item != .None && inventory_add(&state.player_inventory, loot_item) {
+			item_d := ITEM_DEFS[loot_item]
+			state.status_message = fmt.tprintf(
+				"You kill %s! Found %s and took it.",
+				def.name,
+				item_d.name,
+			)
+		} else {
+			state.status_message = fmt.tprintf(
+				"You attack %s for %d damage and kill it!",
+				def.name,
+				damage,
+			)
+		}
 	} else {
 		state.status_message = fmt.tprintf(
 			"You attack %s for %d damage. (HP: %d/%d)",
@@ -135,13 +198,13 @@ step_enemy_turns :: proc(state: ^Game_State) {
 		if !enemy.is_alive do continue
 
 		def := ENEMY_DEFS[enemy.kind]
+		enemy_att, _ := get_enemy_stats(&enemy)
 		dx := state.player_x - enemy.x
 		dy := state.player_y - enemy.y
 		dist_sq := dx * dx + dy * dy
 
-		// if adjacent to player, attack
 		if abs(dx) <= 1 && abs(dy) <= 1 {
-			damage := def.attack - state.player_defense
+			damage := enemy_att - state.player_defense
 			if damage < 1 do damage = 1
 			state.player_hp -= damage
 			state.player_last_attack = 0
@@ -164,10 +227,8 @@ step_enemy_turns :: proc(state: ^Game_State) {
 			continue
 		}
 
-		// check if enemy can see or is near player
 		max_dist := def.fov_range
 		if dist_sq <= max_dist * max_dist {
-			// step towards player
 			step_x := 0
 			step_y := 0
 			if dx > 0 do step_x = 1
@@ -176,7 +237,6 @@ step_enemy_turns :: proc(state: ^Game_State) {
 			if dy > 0 do step_y = 1
 			else if dy < 0 do step_y = -1
 
-			// try preferred axis first
 			if abs(dx) >= abs(dy) {
 				if step_x != 0 && !is_tile_blocked(state, enemy.x + step_x, enemy.y) {
 					enemy.x += step_x
@@ -212,7 +272,6 @@ step_turn :: proc(state: ^Game_State, dx: int, dy: int) {
 
 	state.player_last_attack += 1
 
-	// 1. check for bump attack on enemy
 	target_enemy := find_enemy_at(&state.dungeon, new_x, new_y)
 	if target_enemy != nil {
 		player_attack(state, target_enemy)
@@ -225,7 +284,6 @@ step_turn :: proc(state: ^Game_State, dx: int, dy: int) {
 
 	target_tile := dungeon_get_tile(&state.dungeon, new_x, new_y)
 
-	// 2. if moving into a closed door, open it (bump to open)
 	if target_tile.type == .Door_Closed {
 		dungeon_set_tile(&state.dungeon, new_x, new_y, .Door_Open)
 		compute_fov(&state.dungeon, state.player_x, state.player_y)
@@ -236,7 +294,6 @@ step_turn :: proc(state: ^Game_State, dx: int, dy: int) {
 		return
 	}
 
-	// 3. move if walkable
 	if target_tile.walkable {
 		state.player_x = new_x
 		state.player_y = new_y
@@ -258,7 +315,7 @@ step_turn :: proc(state: ^Game_State, dx: int, dy: int) {
 	}
 }
 
-// descend stairs to the next level down
+// descend stairs to next level
 go_down_stairs :: proc(state: ^Game_State) -> bool {
 	current_tile := dungeon_get_tile(&state.dungeon, state.player_x, state.player_y)
 	if current_tile.type != .Stairs_Down {
@@ -266,7 +323,6 @@ go_down_stairs :: proc(state: ^Game_State) -> bool {
 		return false
 	}
 
-	// save current floor modifications
 	state.floors[state.depth] = state.dungeon
 
 	target_depth := state.depth + 1
@@ -278,7 +334,6 @@ go_down_stairs :: proc(state: ^Game_State) -> bool {
 	state.depth = target_depth
 	state.dungeon = state.floors[target_depth]
 
-	// player arrives at the stairs leading up on the new floor
 	state.player_x = state.dungeon.stairs_up_pos.x
 	state.player_y = state.dungeon.stairs_up_pos.y
 
@@ -290,7 +345,7 @@ go_down_stairs :: proc(state: ^Game_State) -> bool {
 	return true
 }
 
-// ascend stairs to the previous level up
+// ascend stairs to previous level
 go_up_stairs :: proc(state: ^Game_State) -> bool {
 	current_tile := dungeon_get_tile(&state.dungeon, state.player_x, state.player_y)
 	if current_tile.type != .Stairs_Up {
@@ -303,14 +358,12 @@ go_up_stairs :: proc(state: ^Game_State) -> bool {
 		return false
 	}
 
-	// save current floor modifications
 	state.floors[state.depth] = state.dungeon
 
 	target_depth := state.depth - 1
 	state.depth = target_depth
 	state.dungeon = state.floors[target_depth]
 
-	// player arrives at the stairs leading down on the higher floor
 	state.player_x = state.dungeon.stairs_down_pos.x
 	state.player_y = state.dungeon.stairs_down_pos.y
 

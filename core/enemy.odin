@@ -74,13 +74,14 @@ ENEMY_DEFS := [Enemy_Kind]Enemy_Def {
 }
 
 Enemy :: struct {
-	id:       int,
-	kind:     Enemy_Kind,
-	x:        int,
-	y:        int,
-	hp:       int,
-	max_hp:   int,
-	is_alive: bool,
+	id:        int,
+	kind:      Enemy_Kind,
+	x:         int,
+	y:         int,
+	hp:        int,
+	max_hp:    int,
+	is_alive:  bool,
+	inventory: Inventory,
 }
 
 Spawn_Entry :: struct {
@@ -93,15 +94,33 @@ SPAWN_TABLE := []Spawn_Entry{{.Rat, 60, 1}, {.Goblin, 35, 1}, {.Skeleton, 25, 2}
 
 create_enemy :: proc(kind: Enemy_Kind, x, y, id: int) -> Enemy {
 	def := ENEMY_DEFS[kind]
-	return Enemy {
-		id = id,
-		kind = kind,
-		x = x,
-		y = y,
-		hp = def.max_hp,
-		max_hp = def.max_hp,
+	e := Enemy {
+		id       = id,
+		kind     = kind,
+		x        = x,
+		y        = y,
+		hp       = def.max_hp,
+		max_hp   = def.max_hp,
 		is_alive = true,
 	}
+
+	switch kind {
+	case .Rat:
+	case .Goblin:
+		force_equip(&e.inventory, .Rusty_Dagger)
+		force_equip(&e.inventory, .Leather_Cap)
+	case .Skeleton:
+		force_equip(&e.inventory, .Iron_Shortsword)
+		force_equip(&e.inventory, .Wooden_Shield)
+		force_equip(&e.inventory, .Iron_Helmet)
+	case .Orc:
+		force_equip(&e.inventory, .Battle_Axe)
+		force_equip(&e.inventory, .Chainmail)
+		force_equip(&e.inventory, .Plate_Greaves)
+		force_equip(&e.inventory, .Iron_Boots)
+	}
+
+	return e
 }
 
 pick_random_enemy_kind :: proc(depth: int, rng: rand.Generator) -> Enemy_Kind {

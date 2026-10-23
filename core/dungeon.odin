@@ -515,13 +515,12 @@ place_enemies :: proc(d: ^Dungeon, depth: int, rng: rand.Generator) {
 				tile := dungeon_get_tile(d, ex, ey)
 				if !tile.walkable do continue
 
-				// don't spawn on stairs
+				// don't spawn on stairs up or down
 				if (ex == d.stairs_up_pos.x && ey == d.stairs_up_pos.y) ||
 				   (ex == d.stairs_down_pos.x && ey == d.stairs_down_pos.y) {
 					continue
 				}
 
-				// check if another enemy is already placed here
 				spot_taken := false
 				for &other in d.enemies {
 					if other.x == ex && other.y == ey {

@@ -6,19 +6,25 @@ import "core:os"
 import "core:path/filepath"
 
 SAVE_MAGIC :: [4]u8{'R', 'O', 'G', 'U'}
-CURRENT_SAVE_VERSION: u32 : 2
+CURRENT_SAVE_VERSION: u32 : 3
 GAME_NAME :: "hirsiz"
 MAX_ENEMIES_PER_FLOOR :: 64
 
+Inventory_Record :: struct #packed {
+	items:     [MAX_INVENTORY_ITEMS]u8,
+	equipment: [EQUIPMENT_SLOT_COUNT]u8,
+}
+
 Enemy_Record :: struct #packed {
-	id:       i32,
-	kind:     u8,
-	is_alive: bool,
-	_pad:     [2]u8,
-	x:        i32,
-	y:        i32,
-	hp:       i32,
-	max_hp:   i32,
+	id:        i32,
+	kind:      u8,
+	is_alive:  bool,
+	_pad:      [2]u8,
+	x:         i32,
+	y:         i32,
+	hp:        i32,
+	max_hp:    i32,
+	inventory: Inventory_Record,
 }
 
 Save_Header :: struct #packed {
@@ -36,6 +42,7 @@ Player_State :: struct #packed {
 	max_hp:        i32,
 	gold:          u32,
 	dungeon_depth: i32,
+	inventory:     Inventory_Record,
 }
 
 Save_Data :: struct #packed {
@@ -68,7 +75,10 @@ get_save_directory :: proc(allocator := context.allocator) -> (string, bool) {
 	} else when ODIN_OS == .Darwin {
 		home := os.get_env("HOME", context.temp_allocator)
 		if len(home) == 0 do return "", false
-		dir_path, err := filepath.join({home, "Library", "Application Support", GAME_NAME}, allocator)
+		dir_path, err := filepath.join(
+			{home, "Library", "Application Support", GAME_NAME},
+			allocator,
+		)
 		if err != nil do return "", false
 	} else {
 		return "", false
@@ -160,22 +170,49 @@ load_game :: proc() -> (data: Save_Data, ok: bool, clean_session: bool) {
 	return loaded, true, clean_session
 }
 
+inventory_to_record :: proc(inv: ^Inventory) -> Inventory_Record {
+	rec: Inventory_Record
+	for item, i in inv.items {
+		rec.items[i] = u8(item)
+	}
+	for slot in Equipment_Slot {
+		rec.equipment[int(slot)] = u8(inv.equipment[slot])
+	}
+	return rec
+}
+
+record_to_inventory :: proc(rec: ^Inventory_Record) -> Inventory {
+	inv: Inventory
+	for b, i in rec.items {
+		kind := Item_Kind(b)
+		inv.items[i] = kind
+		if kind != .None {
+			inv.item_count += 1
+		}
+	}
+	for slot in Equipment_Slot {
+		inv.equipment[slot] = Item_Kind(rec.equipment[int(slot)])
+	}
+	return inv
+}
+
 auto_save_game :: proc(state: ^Game_State) -> bool {
 	data := Save_Data {
 		header = {
-			magic         = SAVE_MAGIC,
-			version       = CURRENT_SAVE_VERSION,
+			magic = SAVE_MAGIC,
+			version = CURRENT_SAVE_VERSION,
 			session_token = 0,
-			dungeon_seed  = state.seed,
-			turn_count    = u64(max(0, state.turn_count)),
+			dungeon_seed = state.seed,
+			turn_count = u64(max(0, state.turn_count)),
 		},
 		player = {
-			pos_x         = i32(state.player_x),
-			pos_y         = i32(state.player_y),
-			hp            = i32(state.player_hp),
-			max_hp        = i32(state.player_max_hp),
-			gold          = state.player_gold,
+			pos_x = i32(state.player_x),
+			pos_y = i32(state.player_y),
+			hp = i32(state.player_hp),
+			max_hp = i32(state.player_max_hp),
+			gold = state.player_gold,
 			dungeon_depth = i32(state.depth),
+			inventory = inventory_to_record(&state.player_inventory),
 		},
 	}
 
@@ -184,13 +221,14 @@ auto_save_game :: proc(state: ^Game_State) -> bool {
 	for i in 0 ..< enemy_count {
 		e := &state.dungeon.enemies[i]
 		data.enemies[i] = Enemy_Record {
-			id       = i32(e.id),
-			kind     = u8(e.kind),
-			is_alive = e.is_alive,
-			x        = i32(e.x),
-			y        = i32(e.y),
-			hp       = i32(e.hp),
-			max_hp   = i32(e.max_hp),
+			id        = i32(e.id),
+			kind      = u8(e.kind),
+			is_alive  = e.is_alive,
+			x         = i32(e.x),
+			y         = i32(e.y),
+			hp        = i32(e.hp),
+			max_hp    = i32(e.max_hp),
+			inventory = inventory_to_record(&e.inventory),
 		}
 	}
 
@@ -220,22 +258,23 @@ restore_game_from_save :: proc(save: ^Save_Data) -> Game_State {
 		state.dungeon = state.floors[depth]
 	}
 
-	// restore enemy states and positions on the active floor
 	if save.enemy_count > 0 {
 		clear(&state.dungeon.enemies)
 		count := min(int(save.enemy_count), MAX_ENEMIES_PER_FLOOR)
 		for i in 0 ..< count {
 			rec := &save.enemies[i]
+			enemy_inv := record_to_inventory(&rec.inventory)
 			append(
 				&state.dungeon.enemies,
 				Enemy {
-					id       = int(rec.id),
-					kind     = Enemy_Kind(rec.kind),
-					x        = int(rec.x),
-					y        = int(rec.y),
-					hp       = int(rec.hp),
-					max_hp   = int(rec.max_hp),
+					id = int(rec.id),
+					kind = Enemy_Kind(rec.kind),
+					x = int(rec.x),
+					y = int(rec.y),
+					hp = int(rec.hp),
+					max_hp = int(rec.max_hp),
 					is_alive = rec.is_alive,
+					inventory = enemy_inv,
 				},
 			)
 		}
@@ -259,8 +298,11 @@ restore_game_from_save :: proc(save: ^Save_Data) -> Game_State {
 
 	state.player_x = px
 	state.player_y = py
+	state.player_inventory = record_to_inventory(&save.player.inventory)
+	recompute_player_stats(&state)
+
 	state.player_hp = int(save.player.hp)
-	state.player_max_hp = int(save.player.max_hp)
+	if state.player_hp > state.player_max_hp do state.player_hp = state.player_max_hp
 	state.player_gold = save.player.gold
 	state.turn_count = int(save.header.turn_count)
 

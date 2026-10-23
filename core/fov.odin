@@ -15,7 +15,6 @@ compute_fov :: proc(d: ^Dungeon, start_x, start_y: int, radius: int = 8) {
 
 	radius_sq := radius * radius
 
-	// cast rays along perimeter of bounding box [-radius..radius]
 	for dx in -radius ..= radius {
 		cast_ray(d, start_x, start_y, start_x + dx, start_y - radius, radius_sq)
 		cast_ray(d, start_x, start_y, start_x + dx, start_y + radius, radius_sq)
@@ -47,7 +46,6 @@ cast_ray :: proc(d: ^Dungeon, x0, y0, x1, y1: int, max_dist_sq: int) {
 			d.visible[idx] = true
 			d.explored[idx] = true
 
-			// wall/obstacle stops ray
 			if !d.tiles[idx].transparent && !(x == x0 && y == y0) {
 				break
 			}
