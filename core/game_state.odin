@@ -38,8 +38,26 @@ Game_State :: struct {
 	turn_count:         int,
 	is_running:         bool,
 	status_message:     string,
+	message_history:    [8]string,
+	message_count:      int,
 	dungeon:            Dungeon,
 	floors:             map[int]Dungeon,
+}
+
+push_message :: proc(state: ^Game_State, msg: string) {
+	if len(msg) == 0 do return
+	state.status_message = msg
+
+	// shift messages if buffer is full
+	if state.message_count < len(state.message_history) {
+		state.message_history[state.message_count] = msg
+		state.message_count += 1
+	} else {
+		for i in 0 ..< len(state.message_history) - 1 {
+			state.message_history[i] = state.message_history[i + 1]
+		}
+		state.message_history[len(state.message_history) - 1] = msg
+	}
 }
 
 recompute_player_stats :: proc(state: ^Game_State) {
@@ -87,6 +105,7 @@ init_game :: proc(seed: u64 = 0) -> Game_State {
 	compute_fov(&dung, spawn_x, spawn_y)
 	floors[depth] = dung
 
+	welcome_msg := "Welcome to hirsiz! Press < or > to use stairs."
 	state := Game_State {
 		seed               = actual_seed,
 		player_x           = spawn_x,
@@ -103,10 +122,11 @@ init_game :: proc(seed: u64 = 0) -> Game_State {
 		depth              = depth,
 		turn_count         = 0,
 		is_running         = true,
-		status_message     = "Welcome to hirsiz! Press < or > to use stairs.",
+		status_message     = welcome_msg,
 		dungeon            = dung,
 		floors             = floors,
 	}
+	push_message(&state, welcome_msg)
 
 	force_equip(&state.player_inventory, .Rusty_Dagger)
 	force_equip(&state.player_inventory, .Cloth_Tunic)
@@ -169,25 +189,20 @@ player_attack :: proc(state: ^Game_State, enemy: ^Enemy) {
 
 		if loot_item != .None && inventory_add(&state.player_inventory, loot_item) {
 			item_d := ITEM_DEFS[loot_item]
-			state.status_message = fmt.tprintf(
-				"You kill %s! Found %s and took it.",
-				def.name,
-				item_d.name,
+			push_message(
+				state,
+				fmt.tprintf("You kill %s! Found %s and took it.", def.name, item_d.name),
 			)
 		} else {
-			state.status_message = fmt.tprintf(
-				"You attack %s for %d damage and kill it!",
-				def.name,
-				damage,
+			push_message(
+				state,
+				fmt.tprintf("You attack %s for %d damage and kill it!", def.name, damage),
 			)
 		}
 	} else {
-		state.status_message = fmt.tprintf(
-			"You attack %s for %d damage. (HP: %d/%d)",
-			def.name,
-			damage,
-			enemy.hp,
-			enemy.max_hp,
+		push_message(
+			state,
+			fmt.tprintf("You attack %s for %d damage. (HP: %d/%d)", def.name, damage, enemy.hp, enemy.max_hp),
 		)
 	}
 }
@@ -210,18 +225,16 @@ step_enemy_turns :: proc(state: ^Game_State) {
 			state.player_last_attack = 0
 			if state.player_hp <= 0 {
 				state.player_hp = 0
-				state.status_message = fmt.tprintf(
-					"%s attacks you for %d damage. You died!",
-					def.name,
-					damage,
+				push_message(
+					state,
+					fmt.tprintf("%s attacks you for %d damage. You died!", def.name, damage),
 				)
 				state.is_running = false
 				return
 			} else {
-				state.status_message = fmt.tprintf(
-					"%s attacks you for %d damage!",
-					def.name,
-					damage,
+				push_message(
+					state,
+					fmt.tprintf("%s attacks you for %d damage!", def.name, damage),
 				)
 			}
 			continue
@@ -288,7 +301,7 @@ step_turn :: proc(state: ^Game_State, dx: int, dy: int) {
 		dungeon_set_tile(&state.dungeon, new_x, new_y, .Door_Open)
 		compute_fov(&state.dungeon, state.player_x, state.player_y)
 		state.turn_count += 1
-		state.status_message = "You open the door."
+		push_message(state, "You open the door.")
 		step_enemy_turns(state)
 		state.floors[state.depth] = state.dungeon
 		return
@@ -302,11 +315,9 @@ step_turn :: proc(state: ^Game_State, dx: int, dy: int) {
 
 		#partial switch target_tile.type {
 		case .Stairs_Down:
-			state.status_message = "There is a staircase leading down here (press > or . to descend)."
+			push_message(state, "There is a staircase leading down here (press > or . to descend).")
 		case .Stairs_Up:
-			state.status_message = "There is a staircase leading up here (press < or , to ascend)."
-		case:
-			state.status_message = ""
+			push_message(state, "There is a staircase leading up here (press < or , to ascend).")
 		}
 
 		check_regen(state)
@@ -319,7 +330,7 @@ step_turn :: proc(state: ^Game_State, dx: int, dy: int) {
 go_down_stairs :: proc(state: ^Game_State) -> bool {
 	current_tile := dungeon_get_tile(&state.dungeon, state.player_x, state.player_y)
 	if current_tile.type != .Stairs_Down {
-		state.status_message = "You can't go down here. (Find a > staircase)"
+		push_message(state, "You can't go down here. (Find a > staircase)")
 		return false
 	}
 
@@ -341,7 +352,7 @@ go_down_stairs :: proc(state: ^Game_State) -> bool {
 	state.floors[state.depth] = state.dungeon
 
 	state.turn_count += 1
-	state.status_message = "You descend deeper into the dungeon."
+	push_message(state, "You descend deeper into the dungeon.")
 	return true
 }
 
@@ -349,12 +360,12 @@ go_down_stairs :: proc(state: ^Game_State) -> bool {
 go_up_stairs :: proc(state: ^Game_State) -> bool {
 	current_tile := dungeon_get_tile(&state.dungeon, state.player_x, state.player_y)
 	if current_tile.type != .Stairs_Up {
-		state.status_message = "You can't go up here. (Find a < staircase)"
+		push_message(state, "You can't go up here. (Find a < staircase)")
 		return false
 	}
 
 	if state.depth <= 1 {
-		state.status_message = "You are already at the dungeon entrance! You cannot leave yet."
+		push_message(state, "You are already at the dungeon entrance! You cannot leave yet.")
 		return false
 	}
 
@@ -371,6 +382,6 @@ go_up_stairs :: proc(state: ^Game_State) -> bool {
 	state.floors[state.depth] = state.dungeon
 
 	state.turn_count += 1
-	state.status_message = "You climb back up the stairs."
+	push_message(state, "You climb back up the stairs.")
 	return true
 }

@@ -2,7 +2,6 @@ package main
 
 import "../core"
 import "core:fmt"
-import "core:strings"
 import rl "vendor:raylib"
 
 tile_type_to_rl_color :: proc(type: core.Tile_Type) -> rl.Color {
@@ -24,9 +23,9 @@ main :: proc() {
 	if load_ok {
 		state = core.restore_game_from_save(&save_data)
 		if !clean_session {
-			state.status_message = "Resumed after abnormal exit (crash/force quit detected)."
+			core.push_message(&state, "Resumed after abnormal exit (crash/force quit detected).")
 		} else {
-			state.status_message = "Game loaded."
+			core.push_message(&state, "Game loaded.")
 		}
 	} else {
 		state = core.init_game()
@@ -52,136 +51,121 @@ main :: proc() {
 	held_dx: int
 	held_dy: int
 
-	show_inventory := false
-	inv_selected := 0
+	selected_slot := Selected_Slot {
+		kind  = .Backpack,
+		index = 0,
+	}
 
 	for !rl.WindowShouldClose() && state.is_running {
-		escape_hit := rl.IsKeyPressed(.ESCAPE) || rl.IsKeyReleased(.ESCAPE)
-		i_hit := rl.IsKeyPressed(.I)
+		screen_w := rl.GetScreenWidth()
+		screen_h := rl.GetScreenHeight()
+		layout := compute_ui_layout(screen_w, screen_h)
 
 		// consume queued keys to catch fast taps from remappers (e.g. caps tap -> esc)
 		for {
 			k := rl.GetKeyPressed()
 			if k == .KEY_NULL do break
-			if k == .ESCAPE do escape_hit = true
-			if k == .I do i_hit = true
 		}
 
-		if i_hit {
-			show_inventory = !show_inventory
+		// directional movement (arrows & vi keys)
+		dx, dy: int
+		if rl.IsKeyPressed(.UP) || rl.IsKeyPressed(.K) {
+			dy = -1; held_dx = 0; held_dy = -1
+		} else if rl.IsKeyPressed(.DOWN) || rl.IsKeyPressed(.J) {
+			dy = 1; held_dx = 0; held_dy = 1
+		} else if rl.IsKeyPressed(.LEFT) || rl.IsKeyPressed(.H) {
+			dx = -1; held_dx = -1; held_dy = 0
+		} else if rl.IsKeyPressed(.RIGHT) || rl.IsKeyPressed(.L) {
+			dx = 1; held_dx = 1; held_dy = 0
 		}
 
-		if show_inventory {
-			if escape_hit {
-				show_inventory = false
-			} else if rl.IsKeyPressed(.UP) || rl.IsKeyPressed(.K) {
-				inv_selected = max(0, inv_selected - 1)
-			} else if rl.IsKeyPressed(.DOWN) || rl.IsKeyPressed(.J) {
-				inv_selected = min(core.MAX_INVENTORY_ITEMS - 1, inv_selected + 1)
-			} else if rl.IsKeyPressed(.ENTER) || rl.IsKeyPressed(.E) {
-				success, msg := core.use_inventory_item(
-					&state.player_inventory,
-					inv_selected,
-					&state.player_hp,
-					state.player_max_hp,
-				)
-				if success {
-					core.recompute_player_stats(&state)
-					state.status_message = msg
-					core.auto_save_game(&state)
-				} else if len(msg) > 0 {
-					state.status_message = msg
-				}
-			} else if rl.IsKeyPressed(.U) {
+		// stair interaction:
+		// go down: '>' (Shift+PERIOD) or PERIOD with shift or KEY_PAGE_DOWN
+		// go up:   '<' (Shift+COMMA)  or COMMA with shift or KEY_PAGE_UP
+		shift_held := rl.IsKeyDown(.LEFT_SHIFT) || rl.IsKeyDown(.RIGHT_SHIFT)
+
+		if (shift_held && rl.IsKeyPressed(.PERIOD)) || rl.IsKeyPressed(.PAGE_DOWN) {
+			if core.go_down_stairs(&state) {
+				core.auto_save_game(&state)
 			}
+		} else if (shift_held && rl.IsKeyPressed(.COMMA)) || rl.IsKeyPressed(.PAGE_UP) {
+			if core.go_up_stairs(&state) {
+				core.auto_save_game(&state)
+			}
+		}
 
-			for key_idx in 0 ..< int(core.EQUIPMENT_SLOT_COUNT) {
-				key := rl.KeyboardKey(int(rl.KeyboardKey.ONE) + key_idx)
-				if rl.IsKeyPressed(key) {
-					slot := core.Equipment_Slot(key_idx)
-					eq_item := state.player_inventory.equipment[slot]
-					if eq_item != .None {
-						if core.unequip_item(&state.player_inventory, slot) {
-							core.recompute_player_stats(&state)
-							state.status_message = fmt.tprintf(
-								"Unequipped %s.",
-								core.ITEM_DEFS[eq_item].name,
-							)
-							core.auto_save_game(&state)
-						} else {
-							state.status_message = "Inventory is full! Cannot unequip."
-						}
+		// keyboard shortcuts for equipment slots unequip (keys 1-8)
+		for key_idx in 0 ..< int(core.EQUIPMENT_SLOT_COUNT) {
+			key := rl.KeyboardKey(int(rl.KeyboardKey.ONE) + key_idx)
+			if rl.IsKeyPressed(key) {
+				slot := core.Equipment_Slot(key_idx)
+				eq_item := state.player_inventory.equipment[slot]
+				if eq_item != .None {
+					if core.unequip_item(&state.player_inventory, slot) {
+						core.recompute_player_stats(&state)
+						core.push_message(
+							&state,
+							fmt.tprintf("Unequipped %s.", core.ITEM_DEFS[eq_item].name),
+						)
+						core.auto_save_game(&state)
+					} else {
+						core.push_message(&state, "Inventory is full! Cannot unequip.")
 					}
 				}
 			}
+		}
+
+		// movement repeat logic
+		if dx != 0 || dy != 0 {
+			hold_timer = 0
 		} else {
-			dx, dy: int
+			is_still_held := false
+			if held_dy == -1 && (rl.IsKeyDown(.UP) || rl.IsKeyDown(.K)) do is_still_held = true
+			if held_dy == 1 && (rl.IsKeyDown(.DOWN) || rl.IsKeyDown(.J)) do is_still_held = true
+			if held_dx == -1 && (rl.IsKeyDown(.LEFT) || rl.IsKeyDown(.H)) do is_still_held = true
+			if held_dx == 1 && (rl.IsKeyDown(.RIGHT) || rl.IsKeyDown(.L)) do is_still_held = true
 
-			// directional movement (Arrows & Vi keys)
-			if rl.IsKeyPressed(.UP) || rl.IsKeyPressed(.K) {
-				dy = -1; held_dx = 0; held_dy = -1
-			} else if rl.IsKeyPressed(.DOWN) || rl.IsKeyPressed(.J) {
-				dy = 1; held_dx = 0; held_dy = 1
-			} else if rl.IsKeyPressed(.LEFT) || rl.IsKeyPressed(.H) {
-				dx = -1; held_dx = -1; held_dy = 0
-			} else if rl.IsKeyPressed(.RIGHT) || rl.IsKeyPressed(.L) {
-				dx = 1; held_dx = 1; held_dy = 0
-			}
-
-			// stair interaction:
-			// go down: '>' (Shift+PERIOD) or PERIOD with shift or KEY_PAGE_DOWN
-			// go up:   '<' (Shift+COMMA)  or COMMA with shift or KEY_PAGE_UP
-			shift_held := rl.IsKeyDown(.LEFT_SHIFT) || rl.IsKeyDown(.RIGHT_SHIFT)
-
-			if (shift_held && rl.IsKeyPressed(.PERIOD)) || rl.IsKeyPressed(.PAGE_DOWN) {
-				if core.go_down_stairs(&state) {
-					core.auto_save_game(&state)
+			if is_still_held {
+				hold_timer += rl.GetFrameTime()
+				if hold_timer >= first_delay {
+					dx = held_dx
+					dy = held_dy
+					hold_timer -= repeat_delay
 				}
-			} else if (shift_held && rl.IsKeyPressed(.COMMA)) || rl.IsKeyPressed(.PAGE_UP) {
-				if core.go_up_stairs(&state) {
-					core.auto_save_game(&state)
-				}
-			}
-
-			if dx != 0 || dy != 0 {
-				hold_timer = 0
 			} else {
-				is_still_held := false
-				if held_dy == -1 && (rl.IsKeyDown(.UP) || rl.IsKeyDown(.K)) do is_still_held = true
-				if held_dy == 1 && (rl.IsKeyDown(.DOWN) || rl.IsKeyDown(.J)) do is_still_held = true
-				if held_dx == -1 && (rl.IsKeyDown(.LEFT) || rl.IsKeyDown(.H)) do is_still_held = true
-				if held_dx == 1 && (rl.IsKeyDown(.RIGHT) || rl.IsKeyDown(.L)) do is_still_held = true
-
-				if is_still_held {
-					hold_timer += rl.GetFrameTime()
-					if hold_timer >= first_delay {
-						dx = held_dx
-						dy = held_dy
-						hold_timer -= repeat_delay
-					}
-				} else {
-					held_dx = 0
-					held_dy = 0
-					hold_timer = 0
-				}
-			}
-
-			if dx != 0 || dy != 0 {
-				prev_turns := state.turn_count
-				core.step_turn(&state, dx, dy)
-				if state.turn_count != prev_turns && state.turn_count % 10 == 0 {
-					core.auto_save_game(&state)
-				}
+				held_dx = 0
+				held_dy = 0
+				hold_timer = 0
 			}
 		}
 
+		if dx != 0 || dy != 0 {
+			prev_turns := state.turn_count
+			core.step_turn(&state, dx, dy)
+			if state.turn_count != prev_turns && state.turn_count % 10 == 0 {
+				core.auto_save_game(&state)
+			}
+		}
+
+		// update camera target and center inside game viewport
 		px := i32(state.player_x) * tile_size
 		py := i32(state.player_y) * tile_size
 		camera.target = {f32(px + tile_size / 2), f32(py + tile_size / 2)}
-		camera.offset = {f32(rl.GetScreenWidth()) / 2.0, f32(rl.GetScreenHeight()) / 2.0}
+		camera.offset = {
+			layout.game_view.x + layout.game_view.width / 2.0,
+			layout.game_view.y + layout.game_view.height / 2.0,
+		}
 
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.Color{12, 12, 18, 255})
+
+		// clip dungeon rendering to game viewport
+		rl.BeginScissorMode(
+			i32(layout.game_view.x),
+			i32(layout.game_view.y),
+			i32(layout.game_view.width),
+			i32(layout.game_view.height),
+		)
 
 		rl.BeginMode2D(camera)
 
@@ -218,7 +202,7 @@ main :: proc() {
 				}
 				rl.DrawRectangleRec(rect, col)
 
-				// overlay ASCII glyph indicator on special tiles or walls
+				// overlay ascii glyph indicator on special tiles or walls
 				glyph := core.tile_to_ascii(tile.type)
 				if tile.type == .Door_Closed ||
 				   tile.type == .Door_Open ||
@@ -273,124 +257,52 @@ main :: proc() {
 		rl.DrawText("@", px + 9, py + 4, 24, rl.WHITE)
 
 		rl.EndMode2D()
+		rl.EndScissorMode()
 
-		hud_text := rl.TextFormat(
-			"HP: %d/%d | ATK: %d | DEF: %d | Depth: %d | Turn: %d",
-			state.player_hp,
-			state.player_max_hp,
-			state.player_attack,
-			state.player_defense,
-			state.depth,
-			state.turn_count,
-		)
-		rl.DrawRectangle(10, 10, 580, 70, rl.Color{0, 0, 0, 180})
-		rl.DrawRectangleLines(10, 10, 580, 70, rl.Color{100, 100, 120, 200})
-		rl.DrawText(hud_text, 20, 18, 20, rl.GOLD)
+		// draw top event log box
+		draw_event_log_box(layout.event_box, &state)
 
-		if len(state.status_message) > 0 {
-			msg_cstr := strings.clone_to_cstring(state.status_message, context.temp_allocator)
-			rl.DrawText(msg_cstr, 20, 48, 18, rl.RAYWHITE)
-		}
+		// draw right pane: stats (top)
+		draw_stats_panel(layout.stats_panel, &state)
 
-		if show_inventory {
-			screen_w := rl.GetScreenWidth()
-			screen_h := rl.GetScreenHeight()
+		// draw right pane: inventory grid (bottom)
+		inv_act := draw_inventory_panel(layout.inventory_panel, &state, &selected_slot)
 
-			panel_w: i32 = 720
-			panel_h: i32 = 520
-			panel_x := (screen_w - panel_w) / 2
-			panel_y := (screen_h - panel_h) / 2
-
-			rl.DrawRectangle(0, 0, screen_w, screen_h, rl.Color{0, 0, 0, 150})
-
-			rl.DrawRectangle(panel_x, panel_y, panel_w, panel_h, rl.Color{20, 20, 28, 245})
-			rl.DrawRectangleLines(panel_x, panel_y, panel_w, panel_h, rl.Color{160, 150, 130, 255})
-
-			rl.DrawText("INVENTORY & EQUIPMENT", panel_x + 20, panel_y + 16, 22, rl.GOLD)
-			rl.DrawText("[ESC] Close", panel_x + panel_w - 120, panel_y + 18, 16, rl.LIGHTGRAY)
-
-			rl.DrawText("Equipment:", panel_x + 25, panel_y + 55, 18, rl.RAYWHITE)
-
-			eq_y := panel_y + 85
-			for slot_idx in 0 ..< int(core.EQUIPMENT_SLOT_COUNT) {
-				slot := core.Equipment_Slot(slot_idx)
-				slot_name := core.EQUIPMENT_SLOT_NAMES[slot]
-				eq_item := state.player_inventory.equipment[slot]
-
-				slot_text: cstring
-				col: rl.Color
-				if eq_item != .None {
-					item_def := core.ITEM_DEFS[eq_item]
-					slot_text = rl.TextFormat(
-						"[%d] %s: %s (+%dA / +%dD)",
-						slot_idx + 1,
-						strings.clone_to_cstring(slot_name, context.temp_allocator),
-						strings.clone_to_cstring(item_def.name, context.temp_allocator),
-						item_def.attack_bonus,
-						item_def.defense_bonus,
-					)
-					col = rl.Color{140, 220, 150, 255}
-				} else {
-					slot_text = rl.TextFormat(
-						"[%d] %s: (empty)",
-						slot_idx + 1,
-						strings.clone_to_cstring(slot_name, context.temp_allocator),
-					)
-					col = rl.Color{120, 120, 130, 255}
+		#partial switch inv_act {
+		case .Use_Or_Equip:
+			if selected_slot.kind == .Backpack {
+				success, msg := core.use_inventory_item(
+					&state.player_inventory,
+					selected_slot.index,
+					&state.player_hp,
+					state.player_max_hp,
+				)
+				if success {
+					core.recompute_player_stats(&state)
+					core.push_message(&state, msg)
+					core.auto_save_game(&state)
+				} else if len(msg) > 0 {
+					core.push_message(&state, msg)
 				}
-				rl.DrawText(slot_text, panel_x + 30, eq_y, 16, col)
-				eq_y += 28
 			}
-
-			rl.DrawLine(
-				panel_x + 25,
-				eq_y + 10,
-				panel_x + 330,
-				eq_y + 10,
-				rl.Color{80, 80, 95, 255},
-			)
-			att_b, def_b, hp_b := core.inventory_stat_bonuses(&state.player_inventory)
-			stats_text := rl.TextFormat("Bonus: +%d Atk | +%d Def | +%d HP", att_b, def_b, hp_b)
-			rl.DrawText(stats_text, panel_x + 30, eq_y + 20, 16, rl.GOLD)
-
-			rl.DrawLine(
-				panel_x + 350,
-				panel_y + 50,
-				panel_x + 350,
-				panel_y + panel_h - 20,
-				rl.Color{80, 80, 95, 255},
-			)
-
-			rl.DrawText("Backpack:", panel_x + 370, panel_y + 55, 18, rl.RAYWHITE)
-
-			item_y := panel_y + 85
-			for i in 0 ..< core.MAX_INVENTORY_ITEMS {
-				item := state.player_inventory.items[i]
-				is_sel := (i == inv_selected)
-
-				item_rect := rl.Rectangle {
-					x      = f32(panel_x + 365),
-					y      = f32(item_y - 2),
-					width  = 330,
-					height = 22,
+		case .Unequip:
+			if selected_slot.kind == .Equip &&
+			   selected_slot.index >= 0 &&
+			   selected_slot.index < int(core.EQUIPMENT_SLOT_COUNT) {
+				slot := core.Equipment_Slot(selected_slot.index)
+				eq_item := state.player_inventory.equipment[slot]
+				if eq_item != .None {
+					if core.unequip_item(&state.player_inventory, slot) {
+						core.recompute_player_stats(&state)
+						core.push_message(
+							&state,
+							fmt.tprintf("Unequipped %s.", core.ITEM_DEFS[eq_item].name),
+						)
+						core.auto_save_game(&state)
+					} else {
+						core.push_message(&state, "Inventory is full! Cannot unequip.")
+					}
 				}
-
-				if is_sel {
-					rl.DrawRectangleRec(item_rect, rl.Color{60, 70, 90, 220})
-					rl.DrawRectangleLinesEx(item_rect, 1, rl.GOLD)
-				}
-
-				if item != .None {
-					def := core.ITEM_DEFS[item]
-					item_name_cstr := strings.clone_to_cstring(def.name, context.temp_allocator)
-					name_txt := rl.TextFormat("%2d. %s", i + 1, item_name_cstr)
-					rl.DrawText(name_txt, panel_x + 370, item_y, 16, is_sel ? rl.GOLD : rl.WHITE)
-				} else {
-					name_txt := rl.TextFormat("%2d. ---", i + 1)
-					rl.DrawText(name_txt, panel_x + 370, item_y, 16, rl.Color{100, 100, 110, 180})
-				}
-
-				item_y += 24
 			}
 		}
 
