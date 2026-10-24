@@ -16,7 +16,7 @@ draw_event_log_box :: proc(rect: rl.Rectangle, state: ^core.Game_State) {
 	}
 
 	// dynamic font size and line height based on box height
-	font_size := math.clamp(i32(rect.height * 0.26), 9, 16)
+	font_size := math.clamp(i32(rect.height * 0.28), 11, 22)
 	line_h := f32(font_size + 4)
 	pad_top := (rect.height - f32(3) * line_h) / 2.0
 	if pad_top < 4.0 {
@@ -44,6 +44,6 @@ draw_event_log_box :: proc(rect: rl.Rectangle, state: ^core.Game_State) {
 			col = rl.Color{120, 125, 140, 160}
 		}
 
-		rl.DrawText(msg_cstr, i32(rect.x + 10), i32(start_y + f32(i) * line_h), font_size, col)
+		draw_text(msg_cstr, i32(rect.x + 10), i32(start_y + f32(i) * line_h), font_size, col)
 	}
 }

@@ -18,6 +18,9 @@ main :: proc() {
 	rl.SetTargetFPS(60)
 	rl.SetExitKey(.KEY_NULL)
 
+	init_fonts()
+	defer unload_fonts()
+
 	state: core.Game_State
 	save_data, load_ok, clean_session := core.load_game()
 	if load_ok {
@@ -210,11 +213,13 @@ main :: proc() {
 				   tile.type == .Stairs_Down {
 					glyph_str: [2]u8 = {u8(glyph), 0}
 					glyph_col := is_vis ? rl.RAYWHITE : rl.Color{130, 130, 140, 255}
-					rl.DrawText(
+					glyph_size :: 26
+					tw := measure_text_bold(cstring(&glyph_str[0]), glyph_size)
+					draw_text_bold(
 						cstring(&glyph_str[0]),
-						i32(rect.x) + 10,
-						i32(rect.y) + 6,
-						20,
+						i32(rect.x) + (tile_size - tw) / 2,
+						i32(rect.y) + (tile_size - glyph_size) / 2,
+						glyph_size,
 						glyph_col,
 					)
 				} else if tile.type == .Wall {
@@ -241,7 +246,15 @@ main :: proc() {
 			rl.DrawRectangle(ex + 2, ey + 2, tile_size - 4, tile_size - 4, enemy_col)
 
 			glyph_str: [2]u8 = {u8(def.symbol), 0}
-			rl.DrawText(cstring(&glyph_str[0]), ex + 10, ey + 4, 22, rl.WHITE)
+			enemy_font_size :: 26
+			tw := measure_text_bold(cstring(&glyph_str[0]), enemy_font_size)
+			draw_text_bold(
+				cstring(&glyph_str[0]),
+				ex + (tile_size - tw) / 2,
+				ey + (tile_size - enemy_font_size) / 2,
+				enemy_font_size,
+				rl.WHITE,
+			)
 
 			if enemy.hp < enemy.max_hp {
 				bar_w := tile_size - 4
@@ -254,7 +267,15 @@ main :: proc() {
 		}
 
 		rl.DrawRectangle(px, py, tile_size, tile_size, rl.Color{220, 60, 60, 255})
-		rl.DrawText("@", px + 9, py + 4, 24, rl.WHITE)
+		player_font_size :: 28
+		player_tw := measure_text_bold("@", player_font_size)
+		draw_text_bold(
+			"@",
+			px + (tile_size - player_tw) / 2,
+			py + (tile_size - player_font_size) / 2,
+			player_font_size,
+			rl.WHITE,
+		)
 
 		rl.EndMode2D()
 		rl.EndScissorMode()

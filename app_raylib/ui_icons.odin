@@ -172,9 +172,9 @@ draw_slot_visual :: proc(
 			rl.DrawRectangleRec(inner, vis.bg_color)
 		}
 		glyph_str: [2]u8 = {u8(vis.glyph), 0}
-		font_size := math.clamp(i32(rect.height * 0.55), 7, 24)
-		tw := rl.MeasureText(cstring(&glyph_str[0]), font_size)
-		rl.DrawText(
+		font_size := math.clamp(i32(rect.height * 0.62), 10, 52)
+		tw := measure_text_bold(cstring(&glyph_str[0]), font_size)
+		draw_text_bold(
 			cstring(&glyph_str[0]),
 			i32(rect.x + (rect.width - f32(tw)) / 2),
 			i32(rect.y + (rect.height - f32(font_size)) / 2),
@@ -183,14 +183,14 @@ draw_slot_visual :: proc(
 		)
 	} else if slot_placeholder != ' ' {
 		placeholder_str: [2]u8 = {u8(slot_placeholder), 0}
-		font_size := math.clamp(i32(rect.height * 0.45), 6, 20)
-		tw := rl.MeasureText(cstring(&placeholder_str[0]), font_size)
-		rl.DrawText(
+		font_size := math.clamp(i32(rect.height * 0.50), 8, 42)
+		tw := measure_text(cstring(&placeholder_str[0]), font_size)
+		draw_text(
 			cstring(&placeholder_str[0]),
 			i32(rect.x + (rect.width - f32(tw)) / 2),
 			i32(rect.y + (rect.height - f32(font_size)) / 2),
 			font_size,
-			rl.Color{65, 68, 85, 255},
+			rl.Color{75, 80, 100, 255},
 		)
 	}
 

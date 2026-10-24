@@ -17,8 +17,8 @@ draw_stats_panel :: proc(rect: rl.Rectangle, state: ^core.Game_State) {
 	line_step := rect.height / 9.2
 	cur_y := rect.y + line_step * 0.5
 
-	font_stat := math.clamp(i32(line_step * 0.72), 8, 16)
-	font_small := math.clamp(i32(line_step * 0.64), 7, 14)
+	font_stat := math.clamp(i32(line_step * 0.72), 10, 26)
+	font_small := math.clamp(i32(line_step * 0.64), 9, 22)
 
 	// hp bar
 	hp_ratio: f32 = 0
@@ -28,7 +28,7 @@ draw_stats_panel :: proc(rect: rl.Rectangle, state: ^core.Game_State) {
 	if hp_ratio < 0 do hp_ratio = 0
 	if hp_ratio > 1 do hp_ratio = 1
 
-	bar_h := math.clamp(line_step * 0.85, 10.0, 22.0)
+	bar_h := math.clamp(line_step * 0.88, 12.0, 32.0)
 	bar_bg := rl.Rectangle{pad_x, cur_y, inner_w, bar_h}
 	rl.DrawRectangleRec(bar_bg, rl.Color{45, 20, 20, 255})
 
@@ -43,9 +43,9 @@ draw_stats_panel :: proc(rect: rl.Rectangle, state: ^core.Game_State) {
 	rl.DrawRectangleLinesEx(bar_bg, 1, rl.Color{80, 80, 95, 255})
 
 	hp_text := rl.TextFormat("HP %d/%d", state.player_hp, state.player_max_hp)
-	hp_font_size := math.clamp(i32(bar_h * 0.7), 8, 14)
-	th := rl.MeasureText(hp_text, hp_font_size)
-	rl.DrawText(
+	hp_font_size := math.clamp(i32(bar_h * 0.72), 10, 22)
+	th := measure_text_bold(hp_text, hp_font_size)
+	draw_text_bold(
 		hp_text,
 		i32(pad_x + (inner_w - f32(th)) / 2),
 		i32(cur_y + (bar_h - f32(hp_font_size)) / 2),
@@ -56,17 +56,17 @@ draw_stats_panel :: proc(rect: rl.Rectangle, state: ^core.Game_State) {
 
 	// attack & defense
 	stat_line_1 := rl.TextFormat("Attack:  %d", state.player_attack)
-	rl.DrawText(stat_line_1, i32(pad_x), i32(cur_y), font_stat, rl.RAYWHITE)
+	draw_text(stat_line_1, i32(pad_x), i32(cur_y), font_stat, rl.RAYWHITE)
 	cur_y += line_step
 
 	stat_line_2 := rl.TextFormat("Defense: %d", state.player_defense)
-	rl.DrawText(stat_line_2, i32(pad_x), i32(cur_y), font_stat, rl.RAYWHITE)
+	draw_text(stat_line_2, i32(pad_x), i32(cur_y), font_stat, rl.RAYWHITE)
 	cur_y += line_step
 
 	// equipment bonus summary
 	att_b, def_b, hp_b := core.inventory_stat_bonuses(&state.player_inventory)
 	bonus_text := rl.TextFormat("Gear: +%dA +%dD +%dHP", att_b, def_b, hp_b)
-	rl.DrawText(bonus_text, i32(pad_x), i32(cur_y), font_small, rl.Color{130, 210, 150, 255})
+	draw_text(bonus_text, i32(pad_x), i32(cur_y), font_small, rl.Color{130, 210, 150, 255})
 	cur_y += line_step
 
 	// divider
@@ -82,13 +82,13 @@ draw_stats_panel :: proc(rect: rl.Rectangle, state: ^core.Game_State) {
 
 	// dungeon progress & turns
 	dungeon_info := rl.TextFormat("Depth: %d", state.depth)
-	rl.DrawText(dungeon_info, i32(pad_x), i32(cur_y), font_small, rl.Color{160, 190, 230, 255})
+	draw_text(dungeon_info, i32(pad_x), i32(cur_y), font_small, rl.Color{160, 190, 230, 255})
 	cur_y += line_step
 
 	turns_info := rl.TextFormat("Turns: %d", state.turn_count)
-	rl.DrawText(turns_info, i32(pad_x), i32(cur_y), font_small, rl.Color{150, 150, 165, 255})
+	draw_text(turns_info, i32(pad_x), i32(cur_y), font_small, rl.Color{150, 150, 165, 255})
 	cur_y += line_step
 
 	gold_info := rl.TextFormat("Gold:  %d", state.player_gold)
-	rl.DrawText(gold_info, i32(pad_x), i32(cur_y), font_small, rl.Color{230, 200, 70, 255})
+	draw_text(gold_info, i32(pad_x), i32(cur_y), font_small, rl.Color{230, 200, 70, 255})
 }

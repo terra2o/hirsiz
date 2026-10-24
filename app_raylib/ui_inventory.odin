@@ -32,8 +32,8 @@ draw_button :: proc(bounds: rl.Rectangle, text: cstring, is_active: bool, font_s
 	rl.DrawRectangleRec(bounds, bg_col)
 	rl.DrawRectangleLinesEx(bounds, 1, border_col)
 
-	tw := rl.MeasureText(text, font_size)
-	rl.DrawText(
+	tw := measure_text(text, font_size)
+	draw_text(
 		text,
 		i32(bounds.x + (bounds.width - f32(tw)) / 2),
 		i32(bounds.y + (bounds.height - f32(font_size)) / 2),
@@ -62,11 +62,11 @@ draw_inventory_panel :: proc(
 
 	// dynamic allocation of vertical budget:
 	// 2 section titles + divider + 2 rows equipment + 4 rows backpack + inspector info + buttons
-	header_font := math.clamp(i32(rect.height * 0.032), 8, 14)
-	header_h := f32(header_font + 4)
-	divider_h: f32 = math.clamp(rect.height * 0.02, 4.0, 8.0)
-	info_h := math.clamp(rect.height * 0.10, 20.0, 38.0)
-	btn_h := math.clamp(rect.height * 0.07, 16.0, 28.0)
+	header_font := math.clamp(i32(rect.height * 0.034), 10, 20)
+	header_h := f32(header_font + 6)
+	divider_h: f32 = math.clamp(rect.height * 0.02, 4.0, 10.0)
+	info_h := math.clamp(rect.height * 0.10, 24.0, 56.0)
+	btn_h := math.clamp(rect.height * 0.07, 18.0, 40.0)
 	slot_gap: f32 = math.clamp(rect.height * 0.01, 2.0, 6.0)
 
 	// total non-grid vertical space
@@ -91,7 +91,7 @@ draw_inventory_panel :: proc(
 	cur_y := rect.y + math.clamp(rect.height * 0.02, 4.0, 10.0)
 
 	// equipment section title
-	rl.DrawText("EQUIPMENT", i32(pad_x), i32(cur_y), header_font, rl.Color{170, 175, 190, 255})
+	draw_text_bold("EQUIPMENT", i32(pad_x), i32(cur_y), header_font, rl.Color{170, 175, 190, 255})
 	cur_y += header_h
 
 	// equipment grid: 2 rows of 4 slots
@@ -137,7 +137,7 @@ draw_inventory_panel :: proc(
 	cur_y += divider_h * 0.6
 
 	// backpack section title
-	rl.DrawText("BACKPACK", i32(pad_x), i32(cur_y), header_font, rl.Color{170, 175, 190, 255})
+	draw_text_bold("BACKPACK", i32(pad_x), i32(cur_y), header_font, rl.Color{170, 175, 190, 255})
 	cur_y += header_h
 
 	// backpack grid: 4 columns x 4 rows = 16 items
@@ -186,13 +186,13 @@ draw_inventory_panel :: proc(
 	rl.DrawRectangleRec(info_rect, rl.Color{22, 22, 30, 255})
 	rl.DrawRectangleLinesEx(info_rect, 1, rl.Color{50, 52, 65, 255})
 
-	info_font_main := math.clamp(i32(info_h * 0.42), 8, 14)
-	info_font_sub := math.clamp(i32(info_h * 0.35), 7, 12)
+	info_font_main := math.clamp(i32(info_h * 0.44), 10, 22)
+	info_font_sub := math.clamp(i32(info_h * 0.36), 9, 18)
 
 	if selected_item != .None {
 		def := core.ITEM_DEFS[selected_item]
 		item_name_cstr := strings.clone_to_cstring(def.name, context.temp_allocator)
-		rl.DrawText(item_name_cstr, i32(pad_x + 6), i32(cur_y + info_h * 0.1), info_font_main, rl.GOLD)
+		draw_text_bold(item_name_cstr, i32(pad_x + 8), i32(cur_y + info_h * 0.1), info_font_main, rl.GOLD)
 
 		desc := ""
 		if def.category == .Equipment {
@@ -201,11 +201,11 @@ draw_inventory_panel :: proc(
 			desc = fmt.tprintf("Restores %d HP", def.heal_amount)
 		}
 		desc_cstr := strings.clone_to_cstring(desc, context.temp_allocator)
-		rl.DrawText(desc_cstr, i32(pad_x + 6), i32(cur_y + info_h * 0.52), info_font_sub, rl.Color{160, 165, 180, 255})
+		draw_text(desc_cstr, i32(pad_x + 8), i32(cur_y + info_h * 0.54), info_font_sub, rl.Color{160, 165, 180, 255})
 	} else {
 		placeholder_text := fmt.tprintf("%s: Empty", selected_label)
 		placeholder_cstr := strings.clone_to_cstring(placeholder_text, context.temp_allocator)
-		rl.DrawText(placeholder_cstr, i32(pad_x + 6), i32(cur_y + (info_h - f32(info_font_main)) / 2), info_font_main, rl.Color{110, 110, 125, 255})
+		draw_text(placeholder_cstr, i32(pad_x + 8), i32(cur_y + (info_h - f32(info_font_main)) / 2), info_font_main, rl.Color{110, 110, 125, 255})
 	}
 
 	cur_y += info_h + slot_gap
@@ -213,7 +213,7 @@ draw_inventory_panel :: proc(
 	// action buttons
 	btn_gap: f32 = slot_gap
 	btn_w := (panel_inner_w - btn_gap) / 2.0
-	btn_font := math.clamp(i32(btn_h * 0.5), 7, 13)
+	btn_font := math.clamp(i32(btn_h * 0.54), 9, 20)
 
 	can_use := (sel.kind == .Backpack && selected_item != .None)
 	can_unequip := (sel.kind == .Equip && selected_item != .None)
