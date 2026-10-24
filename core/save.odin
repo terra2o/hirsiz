@@ -6,9 +6,10 @@ import "core:os"
 import "core:path/filepath"
 
 SAVE_MAGIC :: [4]u8{'R', 'O', 'G', 'U'}
-CURRENT_SAVE_VERSION: u32 : 3
+CURRENT_SAVE_VERSION: u32 : 4
 GAME_NAME :: "hirsiz"
 MAX_ENEMIES_PER_FLOOR :: 64
+EXPLORED_MAP_BYTES :: (DUNGEON_WIDTH * DUNGEON_HEIGHT + 7) / 8
 
 Inventory_Record :: struct #packed {
 	items:     [MAX_INVENTORY_ITEMS]u8,
@@ -46,10 +47,11 @@ Player_State :: struct #packed {
 }
 
 Save_Data :: struct #packed {
-	header:      Save_Header,
-	player:      Player_State,
-	enemy_count: u32,
-	enemies:     [MAX_ENEMIES_PER_FLOOR]Enemy_Record,
+	header:         Save_Header,
+	player:         Player_State,
+	enemy_count:    u32,
+	enemies:        [MAX_ENEMIES_PER_FLOOR]Enemy_Record,
+	explored_tiles: [EXPLORED_MAP_BYTES]u8,
 }
 
 get_save_directory :: proc(allocator := context.allocator) -> (string, bool) {
@@ -232,6 +234,13 @@ auto_save_game :: proc(state: ^Game_State) -> bool {
 		}
 	}
 
+	tile_count := min(len(state.dungeon.explored), DUNGEON_WIDTH * DUNGEON_HEIGHT)
+	for i in 0 ..< tile_count {
+		if state.dungeon.explored[i] {
+			data.explored_tiles[i / 8] |= (1 << u8(i % 8))
+		}
+	}
+
 	return save_game(&data)
 }
 
@@ -305,6 +314,15 @@ restore_game_from_save :: proc(save: ^Save_Data) -> Game_State {
 	if state.player_hp > state.player_max_hp do state.player_hp = state.player_max_hp
 	state.player_gold = save.player.gold
 	state.turn_count = int(save.header.turn_count)
+
+	tile_count := min(len(state.dungeon.explored), DUNGEON_WIDTH * DUNGEON_HEIGHT)
+	for i in 0 ..< tile_count {
+		byte_val := save.explored_tiles[i / 8]
+		bit_mask := u8(1 << u8(i % 8))
+		if (byte_val & bit_mask) != 0 {
+			state.dungeon.explored[i] = true
+		}
+	}
 
 	compute_fov(&state.dungeon, state.player_x, state.player_y)
 	state.floors[state.depth] = state.dungeon
