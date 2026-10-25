@@ -196,9 +196,20 @@ draw_inventory_panel :: proc(
 
 		desc := ""
 		if def.category == .Equipment {
-			desc = fmt.tprintf("+%dA +%dD +%dHP", def.attack_bonus, def.defense_bonus, def.hp_bonus)
+			desc = fmt.tprintf(
+				"+%dA +%dD +%dHP +%dInt +%dMP",
+				def.attack_bonus,
+				def.defense_bonus,
+				def.hp_bonus,
+				def.int_bonus,
+				def.mp_bonus,
+			)
 		} else if def.category == .Consumable {
-			desc = fmt.tprintf("Restores %d HP", def.heal_amount)
+			if def.heal_amount > 0 {
+				desc = fmt.tprintf("Restores %d HP", def.heal_amount)
+			} else if def.mp_restore > 0 {
+				desc = fmt.tprintf("Restores %d MP", def.mp_restore)
+			}
 		}
 		desc_cstr := strings.clone_to_cstring(desc, context.temp_allocator)
 		draw_text(desc_cstr, i32(pad_x + 8), i32(cur_y + info_h * 0.54), info_font_sub, rl.Color{160, 165, 180, 255})

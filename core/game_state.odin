@@ -2,6 +2,7 @@ package core
 
 import "core:crypto"
 import "core:fmt"
+import "core:strings"
 
 floor_seed :: proc(base_seed: u64, depth: int) -> u64 {
 	z := base_seed ~ (u64(depth) * 0x9e3779b97f4a7c15)
@@ -22,67 +23,148 @@ generate_random_seed :: proc() -> u64 {
 
 Game_State :: struct {
 	seed:               u64,
+	player_name:        [MAX_NAME_LEN]u8,
+	player_name_len:    u8,
+	player_species:     Species,
+	player_background:  Background,
 	player_x:           int,
 	player_y:           int,
 	player_hp:          int,
 	player_max_hp:      int,
 	player_base_max_hp: int,
+	player_mp:          int,
+	player_max_mp:      int,
+	player_base_max_mp: int,
+	player_base_str:    int,
+	player_base_int:    int,
+	player_base_dex:    int,
+	player_str:         int,
+	player_int:         int,
+	player_dex:         int,
 	player_gold:        u32,
 	player_base_attack: int,
 	player_base_def:    int,
 	player_attack:      int,
 	player_defense:     int,
 	player_last_attack: int,
+	berserk_turns:      int,
 	player_inventory:   Inventory,
+	known_spells:       [MAX_KNOWN_SPELLS]Spell_Kind,
+	spell_count:        int,
+	selected_spell:     int,
 	depth:              int,
 	turn_count:         int,
 	is_running:         bool,
+	last_killer_name:   string,
 	status_message:     string,
 	message_history:    [8]string,
 	message_count:      int,
+	is_targeting:       bool,
+	target_x:           int,
+	target_y:           int,
+	active_projectiles: [MAX_ACTIVE_PROJECTILES]Projectile,
+	projectile_count:   int,
+	projectile_timer:   f32,
 	dungeon:            Dungeon,
 	floors:             map[int]Dungeon,
 }
 
+player_fov_radius :: proc(state: ^Game_State) -> int {
+	if state.player_species == .Barachi {
+		return 10
+	}
+	return 8
+}
+
 push_message :: proc(state: ^Game_State, msg: string) {
 	if len(msg) == 0 do return
-	state.status_message = msg
 
-	// shift messages if buffer is full
+	// free the previous status message if it's not shared with history,
+	// or just let status_message point to the latest history entry
+	cloned_msg := strings.clone(msg)
+	state.status_message = cloned_msg
+
 	if state.message_count < len(state.message_history) {
-		state.message_history[state.message_count] = msg
+		state.message_history[state.message_count] = cloned_msg
 		state.message_count += 1
 	} else {
+		// prevent leaking the oldest message before shifting it out
+		delete(state.message_history[0])
+
 		for i in 0 ..< len(state.message_history) - 1 {
 			state.message_history[i] = state.message_history[i + 1]
 		}
-		state.message_history[len(state.message_history) - 1] = msg
+		state.message_history[len(state.message_history) - 1] = cloned_msg
 	}
 }
 
 recompute_player_stats :: proc(state: ^Game_State) {
-	att_b, def_b, hp_b := inventory_stat_bonuses(&state.player_inventory)
-	state.player_attack = state.player_base_attack + att_b
+	att_b, def_b, hp_b, int_b, mp_b := inventory_stat_bonuses(&state.player_inventory)
+	sp_def := SPECIES_DEFS[state.player_species]
+
+	state.player_str = state.player_base_str
+	state.player_int = state.player_base_int + int_b
+	state.player_dex = state.player_base_dex
+
+	// derive base combat power from attributes and species traits
+	state.player_base_attack = max(1, 1 + state.player_str / 3 + sp_def.innate_att)
+	state.player_base_def = max(0, state.player_dex / 4 + sp_def.innate_def)
+
+	berserk_bonus := state.berserk_turns > 0 ? 4 : 0
+	state.player_attack = state.player_base_attack + att_b + berserk_bonus
 	state.player_defense = state.player_base_def + def_b
 
 	old_max := state.player_max_hp
-	state.player_max_hp = state.player_base_max_hp + hp_b
-	if state.player_max_hp > old_max {
+	state.player_max_hp = max(1, state.player_base_max_hp + hp_b)
+	if old_max > 0 && state.player_max_hp > old_max {
 		state.player_hp += (state.player_max_hp - old_max)
 	}
 	if state.player_hp > state.player_max_hp {
 		state.player_hp = state.player_max_hp
 	}
+
+	if state.player_species == .Djinni {
+		state.player_max_mp = 0
+		state.player_mp = 0
+	} else {
+		old_mp_max := state.player_max_mp
+		state.player_max_mp = max(0, state.player_base_max_mp + mp_b + int_b / 2)
+		if old_mp_max > 0 && state.player_max_mp > old_mp_max {
+			state.player_mp += (state.player_max_mp - old_mp_max)
+		}
+		if state.player_mp > state.player_max_mp {
+			state.player_mp = state.player_max_mp
+		}
+	}
 }
 
 get_enemy_stats :: proc(enemy: ^Enemy) -> (attack: int, defense: int) {
 	def := ENEMY_DEFS[enemy.kind]
-	att_b, def_b, _ := inventory_stat_bonuses(&enemy.inventory)
+	att_b, def_b, _, _, _ := inventory_stat_bonuses(&enemy.inventory)
 	return def.attack + att_b, def.defense + def_b
 }
 
-init_game :: proc(seed: u64 = 0) -> Game_State {
+learn_spell :: proc(state: ^Game_State, spell: Spell_Kind) -> bool {
+	if spell == .None do return false
+	for i in 0 ..< state.spell_count {
+		if state.known_spells[i] == spell do return false
+	}
+	if state.spell_count >= MAX_KNOWN_SPELLS do return false
+	state.known_spells[state.spell_count] = spell
+	state.spell_count += 1
+	return true
+}
+
+init_game :: proc(seed: u64 = 0, char_cfg: Maybe(Character_Config) = nil) -> Game_State {
+	cfg := default_character_config()
+	if c, has_cfg := char_cfg.?; has_cfg {
+		cfg = c
+	}
+
 	actual_seed := seed
+	if actual_seed == 0 {
+		actual_seed = cfg.seed
+	}
 	if actual_seed == 0 {
 		actual_seed = generate_random_seed()
 	}
@@ -90,8 +172,8 @@ init_game :: proc(seed: u64 = 0) -> Game_State {
 	floors := make(map[int]Dungeon)
 
 	depth := 1
-	cfg := default_dungeon_config(floor_seed(actual_seed, depth), depth)
-	dung := generate_dungeon(cfg)
+	d_cfg := default_dungeon_config(floor_seed(actual_seed, depth), depth)
+	dung := generate_dungeon(d_cfg)
 	floors[depth] = dung
 
 	spawn_x := dung.stairs_up_pos.x
@@ -102,37 +184,103 @@ init_game :: proc(seed: u64 = 0) -> Game_State {
 		spawn_y = dung.rooms[0].center_y
 	}
 
-	compute_fov(&dung, spawn_x, spawn_y)
-	floors[depth] = dung
+	str, intel, dex, max_hp, max_mp := compute_starting_stats(cfg.species, cfg.background)
 
-	welcome_msg := "Welcome to hirsiz! Press < or > to use stairs."
+	// wanderer background adds small random attribute twist
+	if cfg.background == .Wanderer {
+		twist := int(actual_seed % 3)
+		if twist == 0 {
+			str += 2; intel -= 1
+		} else if twist == 1 {
+			intel += 2; dex -= 1
+		} else {
+			dex += 2; str -= 1
+		}
+	}
+
 	state := Game_State {
 		seed               = actual_seed,
+		player_name        = cfg.name,
+		player_name_len    = cfg.name_len,
+		player_species     = cfg.species,
+		player_background  = cfg.background,
 		player_x           = spawn_x,
 		player_y           = spawn_y,
-		player_hp          = 20,
-		player_max_hp      = 20,
-		player_base_max_hp = 20,
+		player_hp          = max_hp,
+		player_max_hp      = max_hp,
+		player_base_max_hp = max_hp,
+		player_mp          = max_mp,
+		player_max_mp      = max_mp,
+		player_base_max_mp = max_mp,
+		player_base_str    = str,
+		player_base_int    = intel,
+		player_base_dex    = dex,
+		player_str         = str,
+		player_int         = intel,
+		player_dex         = dex,
 		player_gold        = 0,
-		player_base_attack = 5,
-		player_base_def    = 1,
-		player_attack      = 5,
-		player_defense     = 1,
-		player_last_attack = 0,
 		depth              = depth,
 		turn_count         = 0,
 		is_running         = true,
-		status_message     = welcome_msg,
 		dungeon            = dung,
 		floors             = floors,
 	}
-	push_message(&state, welcome_msg)
 
-	force_equip(&state.player_inventory, .Rusty_Dagger)
-	force_equip(&state.player_inventory, .Cloth_Tunic)
-	force_equip(&state.player_inventory, .Leather_Boots)
-	inventory_add(&state.player_inventory, .Health_Potion)
+	compute_fov(&state.dungeon, spawn_x, spawn_y, player_fov_radius(&state))
+	state.floors[depth] = state.dungeon
+
+	bg_def := BACKGROUND_DEFS[cfg.background]
+	for eq_item in bg_def.starting_eq {
+		if eq_item != .None {
+			// felids cannot wear body/head/foot armor
+			if cfg.species == .Felid {
+				item_d := ITEM_DEFS[eq_item]
+				if item_d.slot != .Ring && item_d.slot != .Amulet {
+					continue
+				}
+			}
+			force_equip(&state.player_inventory, eq_item)
+		}
+	}
+	for bag_item in bg_def.starting_bag {
+		if bag_item != .None {
+			inventory_add(&state.player_inventory, bag_item)
+		}
+	}
+	for sp in bg_def.spells {
+		if sp != .None {
+			learn_spell(&state, sp)
+		}
+	}
+
+	if cfg.background == .Wanderer {
+		rand_spells := [?]Spell_Kind {
+			.Magic_Dart,
+			.Foxfire,
+			.Freeze,
+			.Shock,
+			.Sandblast,
+			.Blink,
+			.Vampiric_Drain,
+		}
+		s1 := rand_spells[int(actual_seed % u64(len(rand_spells)))]
+		s2 := rand_spells[int((actual_seed >> 4) % u64(len(rand_spells)))]
+		learn_spell(&state, s1)
+		learn_spell(&state, s2)
+	}
+
 	recompute_player_stats(&state)
+	state.player_hp = state.player_max_hp
+	state.player_mp = state.player_max_mp
+
+	p_name := character_name_str(&state.player_name, state.player_name_len)
+	welcome_msg := fmt.tprintf(
+		"Welcome, %s the %s %s! Press ? for help or z to cast spells.",
+		p_name,
+		SPECIES_DEFS[cfg.species].name,
+		BACKGROUND_DEFS[cfg.background].name,
+	)
+	push_message(&state, welcome_msg)
 
 	return state
 }
@@ -142,6 +290,7 @@ destroy_game :: proc(state: ^Game_State) {
 		destroy_dungeon(&dung)
 	}
 	delete(state.floors)
+	state.floors = nil
 }
 
 find_enemy_at :: proc(d: ^Dungeon, x, y: int) -> ^Enemy {
@@ -161,6 +310,52 @@ is_tile_blocked :: proc(state: ^Game_State, x, y: int) -> bool {
 	return false
 }
 
+award_enemy_loot_and_kill_msg :: proc(
+	state: ^Game_State,
+	enemy: ^Enemy,
+	source_label: string,
+	damage: int,
+) {
+	def := ENEMY_DEFS[enemy.kind]
+	gold_gain := u32(max(1, def.xp_value / 3))
+	state.player_gold += gold_gain
+
+	loot_item: Item_Kind = .None
+	for slot in Equipment_Slot {
+		if enemy.inventory.equipment[slot] != .None {
+			loot_item = enemy.inventory.equipment[slot]
+			break
+		}
+	}
+	if loot_item == .None && enemy.inventory.item_count > 0 {
+		for it in enemy.inventory.items {
+			if it != .None {
+				loot_item = it
+				break
+			}
+		}
+	}
+
+	if loot_item != .None && inventory_add(&state.player_inventory, loot_item) {
+		item_d := ITEM_DEFS[loot_item]
+		push_message(
+			state,
+			fmt.tprintf("You kill %s! Found %s (+%d gold).", def.name, item_d.name, gold_gain),
+		)
+	} else {
+		push_message(
+			state,
+			fmt.tprintf(
+				"%s hits %s for %d damage and kills it! (+%d gold)",
+				source_label,
+				def.name,
+				damage,
+				gold_gain,
+			),
+		)
+	}
+}
+
 player_attack :: proc(state: ^Game_State, enemy: ^Enemy) {
 	def := ENEMY_DEFS[enemy.kind]
 	_, enemy_def := get_enemy_stats(enemy)
@@ -170,44 +365,30 @@ player_attack :: proc(state: ^Game_State, enemy: ^Enemy) {
 	enemy.hp -= damage
 	if enemy.hp <= 0 {
 		enemy.is_alive = false
-
-		loot_item: Item_Kind = .None
-		for slot in Equipment_Slot {
-			if enemy.inventory.equipment[slot] != .None {
-				loot_item = enemy.inventory.equipment[slot]
-				break
-			}
-		}
-		if loot_item == .None && enemy.inventory.item_count > 0 {
-			for it in enemy.inventory.items {
-				if it != .None {
-					loot_item = it
-					break
-				}
-			}
-		}
-
-		if loot_item != .None && inventory_add(&state.player_inventory, loot_item) {
-			item_d := ITEM_DEFS[loot_item]
-			push_message(
-				state,
-				fmt.tprintf("You kill %s! Found %s and took it.", def.name, item_d.name),
-			)
-		} else {
-			push_message(
-				state,
-				fmt.tprintf("You attack %s for %d damage and kill it!", def.name, damage),
-			)
-		}
+		award_enemy_loot_and_kill_msg(state, enemy, "Your attack", damage)
 	} else {
 		push_message(
 			state,
-			fmt.tprintf("You attack %s for %d damage. (HP: %d/%d)", def.name, damage, enemy.hp, enemy.max_hp),
+			fmt.tprintf(
+				"You attack %s for %d damage. (HP: %d/%d)",
+				def.name,
+				damage,
+				enemy.hp,
+				enemy.max_hp,
+			),
 		)
 	}
 }
 
 step_enemy_turns :: proc(state: ^Game_State) {
+	if state.berserk_turns > 0 {
+		state.berserk_turns -= 1
+		if state.berserk_turns == 0 {
+			recompute_player_stats(state)
+			push_message(state, "Your berserk rage subsides.")
+		}
+	}
+
 	d := &state.dungeon
 	for &enemy in d.enemies {
 		if !enemy.is_alive do continue
@@ -225,6 +406,7 @@ step_enemy_turns :: proc(state: ^Game_State) {
 			state.player_last_attack = 0
 			if state.player_hp <= 0 {
 				state.player_hp = 0
+				state.last_killer_name = def.name
 				push_message(
 					state,
 					fmt.tprintf("%s attacks you for %d damage. You died!", def.name, damage),
@@ -232,10 +414,7 @@ step_enemy_turns :: proc(state: ^Game_State) {
 				state.is_running = false
 				return
 			} else {
-				push_message(
-					state,
-					fmt.tprintf("%s attacks you for %d damage!", def.name, damage),
-				)
+				push_message(state, fmt.tprintf("%s attacks you for %d damage!", def.name, damage))
 			}
 			continue
 		}
@@ -269,13 +448,26 @@ step_enemy_turns :: proc(state: ^Game_State) {
 
 player_regen :: proc(state: ^Game_State) {
 	if state.player_hp < state.player_max_hp {
-		state.player_hp += 1
+		regen_amt := 1
+		if state.player_species == .Troll || state.player_species == .Vine_Stalker {
+			regen_amt = 2
+		}
+		state.player_hp = min(state.player_max_hp, state.player_hp + regen_amt)
+	}
+	if state.player_mp < state.player_max_mp {
+		state.player_mp = min(state.player_max_mp, state.player_mp + 1)
 	}
 }
 
 check_regen :: proc(state: ^Game_State) {
-	if state.player_last_attack >= 10 {
+	threshold := 10
+	if state.player_species == .Troll || state.player_species == .Vine_Stalker {
+		threshold = 6
+	}
+	if state.player_last_attack >= threshold {
 		player_regen(state)
+	} else if state.turn_count % 4 == 0 && state.player_mp < state.player_max_mp {
+		state.player_mp += 1
 	}
 }
 
@@ -290,6 +482,7 @@ step_turn :: proc(state: ^Game_State, dx: int, dy: int) {
 		player_attack(state, target_enemy)
 		state.player_last_attack = 0
 		state.turn_count += 1
+		step_all_projectiles(state)
 		step_enemy_turns(state)
 		state.floors[state.depth] = state.dungeon
 		return
@@ -299,9 +492,10 @@ step_turn :: proc(state: ^Game_State, dx: int, dy: int) {
 
 	if target_tile.type == .Door_Closed {
 		dungeon_set_tile(&state.dungeon, new_x, new_y, .Door_Open)
-		compute_fov(&state.dungeon, state.player_x, state.player_y)
+		compute_fov(&state.dungeon, state.player_x, state.player_y, player_fov_radius(state))
 		state.turn_count += 1
 		push_message(state, "You open the door.")
+		step_all_projectiles(state)
 		step_enemy_turns(state)
 		state.floors[state.depth] = state.dungeon
 		return
@@ -310,17 +504,18 @@ step_turn :: proc(state: ^Game_State, dx: int, dy: int) {
 	if target_tile.walkable {
 		state.player_x = new_x
 		state.player_y = new_y
-		compute_fov(&state.dungeon, state.player_x, state.player_y)
+		compute_fov(&state.dungeon, state.player_x, state.player_y, player_fov_radius(state))
 		state.turn_count += 1
 
 		#partial switch target_tile.type {
 		case .Stairs_Down:
-			push_message(state, "There is a staircase leading down here (press > or . to descend).")
+			push_message(state, "There is a staircase leading down here (press > to descend).")
 		case .Stairs_Up:
-			push_message(state, "There is a staircase leading up here (press < or , to ascend).")
+			push_message(state, "There is a staircase leading up here (press < to ascend).")
 		}
 
 		check_regen(state)
+		step_all_projectiles(state)
 		step_enemy_turns(state)
 		state.floors[state.depth] = state.dungeon
 	}
@@ -348,7 +543,7 @@ go_down_stairs :: proc(state: ^Game_State) -> bool {
 	state.player_x = state.dungeon.stairs_up_pos.x
 	state.player_y = state.dungeon.stairs_up_pos.y
 
-	compute_fov(&state.dungeon, state.player_x, state.player_y)
+	compute_fov(&state.dungeon, state.player_x, state.player_y, player_fov_radius(state))
 	state.floors[state.depth] = state.dungeon
 
 	state.turn_count += 1
@@ -378,7 +573,7 @@ go_up_stairs :: proc(state: ^Game_State) -> bool {
 	state.player_x = state.dungeon.stairs_down_pos.x
 	state.player_y = state.dungeon.stairs_down_pos.y
 
-	compute_fov(&state.dungeon, state.player_x, state.player_y)
+	compute_fov(&state.dungeon, state.player_x, state.player_y, player_fov_radius(state))
 	state.floors[state.depth] = state.dungeon
 
 	state.turn_count += 1

@@ -21,11 +21,20 @@ Item_Kind :: enum u8 {
 	Iron_Shortsword,
 	Steel_Broadsword,
 	Battle_Axe,
+	Hand_Axe,
+	Mace,
+	Spear,
+	Quarterstaff,
+	Short_Bow,
 	Leather_Cap,
 	Iron_Helmet,
 	Steel_Full_Helm,
+	Wizard_Hat,
 	Cloth_Tunic,
+	Robe,
+	Animal_Skin,
 	Leather_Armor,
+	Scale_Mail,
 	Chainmail,
 	Plate_Armor,
 	Cloth_Pants,
@@ -37,8 +46,11 @@ Item_Kind :: enum u8 {
 	Iron_Shield,
 	Ring_Of_Protection,
 	Ring_Of_Might,
+	Ring_Of_Wizardry,
 	Amulet_Of_Vitality,
+	Amulet_Of_Magic,
 	Health_Potion,
+	Magic_Potion,
 }
 
 Item_Category :: enum u8 {
@@ -55,14 +67,17 @@ Item_Def :: struct {
 	attack_bonus:  int,
 	defense_bonus: int,
 	hp_bonus:      int,
+	int_bonus:     int,
+	mp_bonus:      int,
 	heal_amount:   int,
+	mp_restore:    int,
 }
 
 ITEM_DEFS := [Item_Kind]Item_Def {
 	.None = {},
 	.Rusty_Dagger = {
 		kind = .Rusty_Dagger,
-		name = "Rusty Dagger",
+		name = "Short Dagger",
 		category = .Equipment,
 		slot = .Weapon,
 		attack_bonus = 2,
@@ -88,6 +103,42 @@ ITEM_DEFS := [Item_Kind]Item_Def {
 		slot = .Weapon,
 		attack_bonus = 10,
 	},
+	.Hand_Axe = {
+		kind = .Hand_Axe,
+		name = "Hand Axe",
+		category = .Equipment,
+		slot = .Weapon,
+		attack_bonus = 4,
+	},
+	.Mace = {
+		kind = .Mace,
+		name = "Iron Mace",
+		category = .Equipment,
+		slot = .Weapon,
+		attack_bonus = 4,
+	},
+	.Spear = {
+		kind = .Spear,
+		name = "Hunting Spear",
+		category = .Equipment,
+		slot = .Weapon,
+		attack_bonus = 5,
+	},
+	.Quarterstaff = {
+		kind = .Quarterstaff,
+		name = "Quarterstaff",
+		category = .Equipment,
+		slot = .Weapon,
+		attack_bonus = 3,
+		int_bonus = 2,
+	},
+	.Short_Bow = {
+		kind = .Short_Bow,
+		name = "Shortbow",
+		category = .Equipment,
+		slot = .Weapon,
+		attack_bonus = 4,
+	},
 	.Leather_Cap = {
 		kind = .Leather_Cap,
 		name = "Leather Cap",
@@ -110,6 +161,15 @@ ITEM_DEFS := [Item_Kind]Item_Def {
 		defense_bonus = 3,
 		hp_bonus = 2,
 	},
+	.Wizard_Hat = {
+		kind = .Wizard_Hat,
+		name = "Wizard Hat",
+		category = .Equipment,
+		slot = .Head,
+		defense_bonus = 1,
+		int_bonus = 2,
+		mp_bonus = 2,
+	},
 	.Cloth_Tunic = {
 		kind = .Cloth_Tunic,
 		name = "Cloth Tunic",
@@ -117,12 +177,36 @@ ITEM_DEFS := [Item_Kind]Item_Def {
 		slot = .Torso,
 		defense_bonus = 1,
 	},
+	.Robe = {
+		kind = .Robe,
+		name = "Mage Robe",
+		category = .Equipment,
+		slot = .Torso,
+		defense_bonus = 1,
+		int_bonus = 1,
+		mp_bonus = 2,
+	},
+	.Animal_Skin = {
+		kind = .Animal_Skin,
+		name = "Animal Skin",
+		category = .Equipment,
+		slot = .Torso,
+		defense_bonus = 2,
+		hp_bonus = 2,
+	},
 	.Leather_Armor = {
 		kind = .Leather_Armor,
 		name = "Leather Armor",
 		category = .Equipment,
 		slot = .Torso,
 		defense_bonus = 2,
+	},
+	.Scale_Mail = {
+		kind = .Scale_Mail,
+		name = "Scale Mail",
+		category = .Equipment,
+		slot = .Torso,
+		defense_bonus = 4,
 	},
 	.Chainmail = {
 		kind = .Chainmail,
@@ -175,14 +259,14 @@ ITEM_DEFS := [Item_Kind]Item_Def {
 	},
 	.Wooden_Shield = {
 		kind = .Wooden_Shield,
-		name = "Wooden Shield",
+		name = "Buckler Shield",
 		category = .Equipment,
 		slot = .Shield,
 		defense_bonus = 1,
 	},
 	.Iron_Shield = {
 		kind = .Iron_Shield,
-		name = "Iron Shield",
+		name = "Kite Shield",
 		category = .Equipment,
 		slot = .Shield,
 		defense_bonus = 3,
@@ -201,6 +285,14 @@ ITEM_DEFS := [Item_Kind]Item_Def {
 		slot = .Ring,
 		attack_bonus = 3,
 	},
+	.Ring_Of_Wizardry = {
+		kind = .Ring_Of_Wizardry,
+		name = "Ring of Wizardry",
+		category = .Equipment,
+		slot = .Ring,
+		int_bonus = 3,
+		mp_bonus = 4,
+	},
 	.Amulet_Of_Vitality = {
 		kind = .Amulet_Of_Vitality,
 		name = "Amulet of Vitality",
@@ -208,11 +300,25 @@ ITEM_DEFS := [Item_Kind]Item_Def {
 		slot = .Amulet,
 		hp_bonus = 8,
 	},
+	.Amulet_Of_Magic = {
+		kind = .Amulet_Of_Magic,
+		name = "Amulet of Magic",
+		category = .Equipment,
+		slot = .Amulet,
+		int_bonus = 1,
+		mp_bonus = 6,
+	},
 	.Health_Potion = {
 		kind = .Health_Potion,
 		name = "Health Potion",
 		category = .Consumable,
 		heal_amount = 15,
+	},
+	.Magic_Potion = {
+		kind = .Magic_Potion,
+		name = "Potion of Magic",
+		category = .Consumable,
+		mp_restore = 12,
 	},
 }
 
@@ -302,7 +408,15 @@ force_equip :: proc(inv: ^Inventory, item: Item_Kind) {
 }
 
 // calculate total stats from equipped wearables
-inventory_stat_bonuses :: proc(inv: ^Inventory) -> (att: int, def: int, max_hp: int) {
+inventory_stat_bonuses :: proc(
+	inv: ^Inventory,
+) -> (
+	att: int,
+	def: int,
+	max_hp: int,
+	int_b: int,
+	max_mp: int,
+) {
 	for slot in Equipment_Slot {
 		eq := inv.equipment[slot]
 		if eq != .None {
@@ -310,6 +424,8 @@ inventory_stat_bonuses :: proc(inv: ^Inventory) -> (att: int, def: int, max_hp: 
 			att += d.attack_bonus
 			def += d.defense_bonus
 			max_hp += d.hp_bonus
+			int_b += d.int_bonus
+			max_mp += d.mp_bonus
 		}
 	}
 	return
@@ -321,6 +437,8 @@ use_inventory_item :: proc(
 	idx: int,
 	hp: ^int,
 	max_hp: int,
+	mp: ^int = nil,
+	max_mp: int = 0,
 ) -> (
 	success: bool,
 	msg: string,
@@ -343,7 +461,18 @@ use_inventory_item :: proc(
 			}
 			hp^ = min(max_hp, hp^ + def.heal_amount)
 			inventory_remove_at(inv, idx)
-			return true, fmt.tprintf("Used %s and restored %d HP.", def.name, def.heal_amount)
+			return true, fmt.tprintf("Quaffed %s and restored %d HP.", def.name, def.heal_amount)
+		}
+		if def.mp_restore > 0 && mp != nil {
+			if max_mp <= 0 {
+				return false, "You have no magic reserves to restore."
+			}
+			if mp^ >= max_mp {
+				return false, "You are already at full magic."
+			}
+			mp^ = min(max_mp, mp^ + def.mp_restore)
+			inventory_remove_at(inv, idx)
+			return true, fmt.tprintf("Quaffed %s and restored %d MP.", def.name, def.mp_restore)
 		}
 		inventory_remove_at(inv, idx)
 		return true, fmt.tprintf("Used %s.", def.name)

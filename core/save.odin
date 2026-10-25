@@ -6,7 +6,7 @@ import "core:os"
 import "core:path/filepath"
 
 SAVE_MAGIC :: [4]u8{'R', 'O', 'G', 'U'}
-CURRENT_SAVE_VERSION: u32 : 4
+CURRENT_SAVE_VERSION: u32 : 5
 GAME_NAME :: "hirsiz"
 MAX_ENEMIES_PER_FLOOR :: 64
 EXPLORED_MAP_BYTES :: (DUNGEON_WIDTH * DUNGEON_HEIGHT + 7) / 8
@@ -41,8 +41,19 @@ Player_State :: struct #packed {
 	pos_y:         i32,
 	hp:            i32,
 	max_hp:        i32,
+	mp:            i32,
+	max_mp:        i32,
+	str:           i32,
+	intel:         i32,
+	dex:           i32,
 	gold:          u32,
 	dungeon_depth: i32,
+	species:       u8,
+	background:    u8,
+	name_len:      u8,
+	spell_count:   u8,
+	name:          [MAX_NAME_LEN]u8,
+	spells:        [MAX_KNOWN_SPELLS]u8,
 	inventory:     Inventory_Record,
 }
 
@@ -134,6 +145,30 @@ save_game :: proc(state: ^Save_Data) -> bool {
 	return true
 }
 
+// reads save file for menu preview without invalidating session token
+peek_save_game :: proc() -> (data: Save_Data, ok: bool) {
+	dir, dir_ok := get_save_directory(context.temp_allocator)
+	if !dir_ok do return {}, false
+
+	save_path, path_err := filepath.join({dir, "save.dat"}, context.temp_allocator)
+	if path_err != nil do return {}, false
+
+	raw_bytes, read_err := os.read_entire_file(save_path, context.allocator)
+	if read_err != nil do return {}, false
+	defer delete(raw_bytes, context.allocator)
+
+	if len(raw_bytes) != size_of(Save_Data) {
+		return {}, false
+	}
+
+	loaded := (^Save_Data)(raw_data(raw_bytes))^
+	if loaded.header.magic != SAVE_MAGIC || loaded.header.version != CURRENT_SAVE_VERSION {
+		return {}, false
+	}
+
+	return loaded, true
+}
+
 load_game :: proc() -> (data: Save_Data, ok: bool, clean_session: bool) {
 	dir, dir_ok := get_save_directory(context.temp_allocator)
 	if !dir_ok do return {}, false, false
@@ -212,10 +247,24 @@ auto_save_game :: proc(state: ^Game_State) -> bool {
 			pos_y = i32(state.player_y),
 			hp = i32(state.player_hp),
 			max_hp = i32(state.player_max_hp),
+			mp = i32(state.player_mp),
+			max_mp = i32(state.player_max_mp),
+			str = i32(state.player_base_str),
+			intel = i32(state.player_base_int),
+			dex = i32(state.player_base_dex),
 			gold = state.player_gold,
 			dungeon_depth = i32(state.depth),
+			species = u8(state.player_species),
+			background = u8(state.player_background),
+			name_len = state.player_name_len,
+			spell_count = u8(state.spell_count),
+			name = state.player_name,
 			inventory = inventory_to_record(&state.player_inventory),
 		},
+	}
+
+	for i in 0 ..< MAX_KNOWN_SPELLS {
+		data.player.spells[i] = u8(state.known_spells[i])
 	}
 
 	enemy_count := min(len(state.dungeon.enemies), MAX_ENEMIES_PER_FLOOR)
@@ -256,12 +305,20 @@ restore_game_from_save :: proc(save: ^Save_Data) -> Game_State {
 	depth := int(save.player.dungeon_depth)
 	if depth < 1 do depth = 1
 
-	state := init_game(save.header.dungeon_seed)
+	cfg := Character_Config {
+		name       = save.player.name,
+		name_len   = save.player.name_len,
+		species    = Species(min(int(save.player.species), SPECIES_COUNT - 1)),
+		background = Background(min(int(save.player.background), BACKGROUND_COUNT - 1)),
+		seed       = save.header.dungeon_seed,
+	}
+
+	state := init_game(save.header.dungeon_seed, cfg)
 
 	if depth != state.depth {
 		if !(depth in state.floors) {
-			cfg := default_dungeon_config(floor_seed(state.seed, depth), depth)
-			state.floors[depth] = generate_dungeon(cfg)
+			d_cfg := default_dungeon_config(floor_seed(state.seed, depth), depth)
+			state.floors[depth] = generate_dungeon(d_cfg)
 		}
 		state.depth = depth
 		state.dungeon = state.floors[depth]
@@ -307,11 +364,20 @@ restore_game_from_save :: proc(save: ^Save_Data) -> Game_State {
 
 	state.player_x = px
 	state.player_y = py
+	state.player_base_str = int(save.player.str)
+	state.player_base_int = int(save.player.intel)
+	state.player_base_dex = int(save.player.dex)
 	state.player_inventory = record_to_inventory(&save.player.inventory)
+
+	state.spell_count = min(int(save.player.spell_count), MAX_KNOWN_SPELLS)
+	for i in 0 ..< MAX_KNOWN_SPELLS {
+		state.known_spells[i] = Spell_Kind(save.player.spells[i])
+	}
+
 	recompute_player_stats(&state)
 
-	state.player_hp = int(save.player.hp)
-	if state.player_hp > state.player_max_hp do state.player_hp = state.player_max_hp
+	state.player_hp = clamp(int(save.player.hp), 1, state.player_max_hp)
+	state.player_mp = clamp(int(save.player.mp), 0, state.player_max_mp)
 	state.player_gold = save.player.gold
 	state.turn_count = int(save.header.turn_count)
 
@@ -324,7 +390,7 @@ restore_game_from_save :: proc(save: ^Save_Data) -> Game_State {
 		}
 	}
 
-	compute_fov(&state.dungeon, state.player_x, state.player_y)
+	compute_fov(&state.dungeon, state.player_x, state.player_y, player_fov_radius(&state))
 	state.floors[state.depth] = state.dungeon
 
 	return state

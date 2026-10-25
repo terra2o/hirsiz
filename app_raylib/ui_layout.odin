@@ -12,8 +12,8 @@ compute_ui_layout :: proc(screen_w, screen_h: i32) -> UI_Layout {
 	layout.scale = math.clamp(f32(screen_h) / 720.0, 0.45, 2.0)
 
 	// right pane takes between 20% and 26% of screen width, clamped between 160 and 420 px
-	target_right_w := f32(screen_w) * 0.23
-	right_w := math.clamp(target_right_w, 160.0, 420.0)
+	target_right_w := f32(screen_w) * 0.24
+	right_w := math.clamp(target_right_w, 180.0, 420.0)
 	if right_w > f32(screen_w) * 0.45 {
 		right_w = f32(screen_w) * 0.45
 	}
@@ -44,9 +44,9 @@ compute_ui_layout :: proc(screen_w, screen_h: i32) -> UI_Layout {
 		height = f32(screen_h),
 	}
 
-	// stats panel takes top ~33% of right pane, leaving 67% for inventory
-	stats_h := f32(screen_h) * 0.33
-	stats_h = math.clamp(stats_h, 110.0, f32(screen_h) * 0.45)
+	// stats panel takes top ~38% of right pane, leaving 62% for inventory
+	stats_h := f32(screen_h) * 0.38
+	stats_h = math.clamp(stats_h, 140.0, f32(screen_h) * 0.46)
 
 	layout.stats_panel = rl.Rectangle {
 		x      = left_w,

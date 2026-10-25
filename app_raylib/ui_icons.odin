@@ -42,6 +42,31 @@ ITEM_VISUALS := [core.Item_Kind]Item_Visual {
 		color = rl.Color{220, 140, 110, 255},
 		bg_color = rl.Color{65, 40, 35, 100},
 	},
+	.Hand_Axe = {
+		glyph = ')',
+		color = rl.Color{210, 155, 115, 255},
+		bg_color = rl.Color{60, 42, 32, 100},
+	},
+	.Mace = {
+		glyph = ')',
+		color = rl.Color{195, 200, 210, 255},
+		bg_color = rl.Color{45, 48, 58, 100},
+	},
+	.Spear = {
+		glyph = '/',
+		color = rl.Color{215, 190, 140, 255},
+		bg_color = rl.Color{55, 48, 35, 100},
+	},
+	.Quarterstaff = {
+		glyph = '\\',
+		color = rl.Color{190, 145, 95, 255},
+		bg_color = rl.Color{55, 40, 28, 100},
+	},
+	.Short_Bow = {
+		glyph = '}',
+		color = rl.Color{205, 160, 100, 255},
+		bg_color = rl.Color{55, 42, 28, 100},
+	},
 	.Leather_Cap = {
 		glyph = '[',
 		color = rl.Color{160, 120, 80, 255},
@@ -57,15 +82,35 @@ ITEM_VISUALS := [core.Item_Kind]Item_Visual {
 		color = rl.Color{225, 235, 250, 255},
 		bg_color = rl.Color{50, 60, 75, 100},
 	},
+	.Wizard_Hat = {
+		glyph = '^',
+		color = rl.Color{165, 130, 245, 255},
+		bg_color = rl.Color{45, 35, 75, 110},
+	},
 	.Cloth_Tunic = {
 		glyph = '[',
 		color = rl.Color{140, 170, 190, 255},
 		bg_color = rl.Color{35, 45, 55, 100},
 	},
+	.Robe = {
+		glyph = '[',
+		color = rl.Color{135, 165, 240, 255},
+		bg_color = rl.Color{35, 42, 75, 110},
+	},
+	.Animal_Skin = {
+		glyph = '[',
+		color = rl.Color{185, 140, 95, 255},
+		bg_color = rl.Color{55, 42, 28, 100},
+	},
 	.Leather_Armor = {
 		glyph = '[',
 		color = rl.Color{175, 125, 80, 255},
 		bg_color = rl.Color{50, 40, 30, 100},
+	},
+	.Scale_Mail = {
+		glyph = '[',
+		color = rl.Color{185, 205, 215, 255},
+		bg_color = rl.Color{42, 52, 62, 100},
 	},
 	.Chainmail = {
 		glyph = '[',
@@ -122,15 +167,30 @@ ITEM_VISUALS := [core.Item_Kind]Item_Visual {
 		color = rl.Color{255, 120, 100, 255},
 		bg_color = rl.Color{80, 40, 35, 100},
 	},
+	.Ring_Of_Wizardry = {
+		glyph = '=',
+		color = rl.Color{185, 125, 255, 255},
+		bg_color = rl.Color{55, 35, 85, 110},
+	},
 	.Amulet_Of_Vitality = {
 		glyph = '"',
 		color = rl.Color{255, 215, 80, 255},
 		bg_color = rl.Color{80, 70, 30, 100},
 	},
+	.Amulet_Of_Magic = {
+		glyph = '"',
+		color = rl.Color{110, 210, 255, 255},
+		bg_color = rl.Color{30, 65, 85, 110},
+	},
 	.Health_Potion = {
 		glyph = '!',
 		color = rl.Color{240, 70, 70, 255},
 		bg_color = rl.Color{70, 25, 25, 120},
+	},
+	.Magic_Potion = {
+		glyph = '!',
+		color = rl.Color{90, 165, 255, 255},
+		bg_color = rl.Color{25, 45, 85, 120},
 	},
 }
 

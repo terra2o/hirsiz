@@ -21,31 +21,24 @@ main :: proc() {
 	init_fonts()
 	defer unload_fonts()
 
-	state: core.Game_State
-	save_data, load_ok, clean_session := core.load_game()
-	if load_ok {
-		state = core.restore_game_from_save(&save_data)
-		if !clean_session {
-			core.push_message(&state, "Resumed after abnormal exit (crash/force quit detected).")
-		} else {
-			core.push_message(&state, "Game loaded.")
-		}
-	} else {
-		state = core.init_game()
-	}
-	defer {
-		if state.player_hp > 0 {
-			core.auto_save_game(&state)
-		} else {
-			// remove save file when player dies
-			core.delete_save_file()
-		}
-		core.destroy_game(&state)
-	}
-
 	tile_size :: 32
 
-	camera := init_camera(f32(state.player_x * tile_size), f32(state.player_y * tile_size))
+	menu := init_menu_state()
+	state: core.Game_State
+	game_active := false
+
+	defer {
+		if game_active {
+			if state.player_hp > 0 {
+				core.auto_save_game(&state)
+			} else {
+				core.delete_save_file()
+			}
+			core.destroy_game(&state)
+		}
+	}
+
+	camera := init_camera(0, 0)
 
 	hold_timer: f32 = 0
 	first_delay :: 0.3
@@ -59,95 +52,234 @@ main :: proc() {
 		index = 0,
 	}
 
-	for !rl.WindowShouldClose() && state.is_running {
+	main_loop: for !rl.WindowShouldClose() {
+		free_all(context.temp_allocator)
+		poll_frame_keys()
+
 		screen_w := rl.GetScreenWidth()
 		screen_h := rl.GetScreenHeight()
-		layout := compute_ui_layout(screen_w, screen_h)
 
-		// consume queued keys to catch fast taps from remappers (e.g. caps tap -> esc)
-		for {
-			k := rl.GetKeyPressed()
-			if k == .KEY_NULL do break
-		}
+		if menu.screen != .Playing {
+			rl.BeginDrawing()
+			rl.ClearBackground(rl.Color{10, 10, 15, 255})
+			act := update_and_draw_menu(&menu, screen_w, screen_h)
+			rl.EndDrawing()
 
-		// directional movement (arrows & vi keys)
-		dx, dy: int
-		if rl.IsKeyPressed(.UP) || rl.IsKeyPressed(.K) {
-			dy = -1; held_dx = 0; held_dy = -1
-		} else if rl.IsKeyPressed(.DOWN) || rl.IsKeyPressed(.J) {
-			dy = 1; held_dx = 0; held_dy = 1
-		} else if rl.IsKeyPressed(.LEFT) || rl.IsKeyPressed(.H) {
-			dx = -1; held_dx = -1; held_dy = 0
-		} else if rl.IsKeyPressed(.RIGHT) || rl.IsKeyPressed(.L) {
-			dx = 1; held_dx = 1; held_dy = 0
-		}
-
-		// stair interaction:
-		// go down: '>' (Shift+PERIOD) or PERIOD with shift or KEY_PAGE_DOWN
-		// go up:   '<' (Shift+COMMA)  or COMMA with shift or KEY_PAGE_UP
-		shift_held := rl.IsKeyDown(.LEFT_SHIFT) || rl.IsKeyDown(.RIGHT_SHIFT)
-
-		if (shift_held && rl.IsKeyPressed(.PERIOD)) || rl.IsKeyPressed(.PAGE_DOWN) {
-			if core.go_down_stairs(&state) {
-				core.auto_save_game(&state)
-			}
-		} else if (shift_held && rl.IsKeyPressed(.COMMA)) || rl.IsKeyPressed(.PAGE_UP) {
-			if core.go_up_stairs(&state) {
-				core.auto_save_game(&state)
-			}
-		}
-
-		// keyboard shortcuts for equipment slots unequip (keys 1-8)
-		for key_idx in 0 ..< int(core.EQUIPMENT_SLOT_COUNT) {
-			key := rl.KeyboardKey(int(rl.KeyboardKey.ONE) + key_idx)
-			if rl.IsKeyPressed(key) {
-				slot := core.Equipment_Slot(key_idx)
-				eq_item := state.player_inventory.equipment[slot]
-				if eq_item != .None {
-					if core.unequip_item(&state.player_inventory, slot) {
-						core.recompute_player_stats(&state)
-						core.push_message(
-							&state,
-							fmt.tprintf("Unequipped %s.", core.ITEM_DEFS[eq_item].name),
-						)
-						core.auto_save_game(&state)
-					} else {
-						core.push_message(&state, "Inventory is full! Cannot unequip.")
-					}
+			#partial switch act {
+			case .Start_New_Game:
+				if game_active {
+					core.destroy_game(&state)
+					game_active = false
 				}
-			}
-		}
-
-		// movement repeat logic
-		if dx != 0 || dy != 0 {
-			hold_timer = 0
-		} else {
-			is_still_held := false
-			if held_dy == -1 && (rl.IsKeyDown(.UP) || rl.IsKeyDown(.K)) do is_still_held = true
-			if held_dy == 1 && (rl.IsKeyDown(.DOWN) || rl.IsKeyDown(.J)) do is_still_held = true
-			if held_dx == -1 && (rl.IsKeyDown(.LEFT) || rl.IsKeyDown(.H)) do is_still_held = true
-			if held_dx == 1 && (rl.IsKeyDown(.RIGHT) || rl.IsKeyDown(.L)) do is_still_held = true
-
-			if is_still_held {
-				hold_timer += rl.GetFrameTime()
-				if hold_timer >= first_delay {
-					dx = held_dx
-					dy = held_dy
-					hold_timer -= repeat_delay
-				}
-			} else {
+				state = core.init_game(menu.char_cfg.seed, menu.char_cfg)
+				game_active = true
+				core.auto_save_game(&state)
+				camera = init_camera(f32(state.player_x * tile_size), f32(state.player_y * tile_size))
 				held_dx = 0
 				held_dy = 0
 				hold_timer = 0
+				menu.screen = .Playing
+
+			case .Continue_Saved_Game:
+				if !game_active {
+					save_data, load_ok, clean_session := core.load_game()
+					if load_ok {
+						state = core.restore_game_from_save(&save_data)
+						game_active = true
+						if !clean_session {
+							core.push_message(&state, "Resumed after abnormal exit (crash/force quit detected).")
+						} else {
+							core.push_message(&state, "Welcome back to the dungeon!")
+						}
+						camera = init_camera(f32(state.player_x * tile_size), f32(state.player_y * tile_size))
+					}
+				}
+				if game_active {
+					held_dx = 0
+					held_dy = 0
+					hold_timer = 0
+					menu.screen = .Playing
+				}
+
+			case .Quit_App:
+				break main_loop
+			}
+			continue
+		}
+
+		layout := compute_ui_layout(screen_w, screen_h)
+
+		shift_held := rl.IsKeyDown(.LEFT_SHIFT) || rl.IsKeyDown(.RIGHT_SHIFT)
+
+		// return to main menu with Escape (including caps-tap via poll_frame_keys), Backspace, or 'm'
+		if is_key_pressed(.ESCAPE) || is_key_pressed(.BACKSPACE) || is_key_pressed(.M) {
+			if state.player_hp > 0 {
+				core.auto_save_game(&state)
+			}
+			refresh_menu_save_preview(&menu)
+			menu.main_cursor = menu.has_save ? 1 : 0
+			menu.screen = .Main_Menu
+			for rl.GetCharPressed() != 0 {}
+			continue
+		}
+
+		// open dungeon manual with '?'
+		if shift_held && is_key_pressed(.SLASH) {
+			menu.return_screen = .Playing
+			menu.screen = .Controls_Help
+			for rl.GetCharPressed() != 0 {}
+			continue
+		}
+
+		for rl.GetCharPressed() != 0 {}
+
+		// check for player death
+		if !state.is_running || state.player_hp <= 0 {
+			menu.last_morgue = core.record_morgue_entry(&state)
+			core.delete_save_file()
+			core.destroy_game(&state)
+			game_active = false
+			refresh_menu_save_preview(&menu)
+			menu.screen = .Game_Over
+			continue
+		}
+
+		// step active in-flight projectiles across real-time frames
+		if core.has_flying_projectiles(&state) {
+			state.projectile_timer += rl.GetFrameTime()
+			if state.projectile_timer >= 0.032 {
+				state.projectile_timer = 0
+				all_finished := core.step_flying_projectiles(&state)
+				if all_finished {
+					core.step_enemy_turns(&state)
+					state.floors[state.depth] = state.dungeon
+				}
+			}
+		} else if state.is_targeting {
+			res := handle_targeting_input(&state)
+			#partial switch res {
+			case .Fired_Projectile, .Executed_Melee:
+				if state.player_hp > 0 {
+					core.auto_save_game(&state)
+				}
+			case .Cancelled, .None:
+			}
+		} else {
+			// cycle spells with '[' / ']'
+			if state.spell_count > 0 {
+				if is_key_pressed(.LEFT_BRACKET) {
+					state.selected_spell = (state.selected_spell - 1 + state.spell_count) % state.spell_count
+					sp := state.known_spells[state.selected_spell]
+					core.push_message(&state, fmt.tprintf("Selected spell: %s.", core.SPELL_DEFS[sp].name))
+				} else if is_key_pressed(.RIGHT_BRACKET) {
+					state.selected_spell = (state.selected_spell + 1) % state.spell_count
+					sp := state.known_spells[state.selected_spell]
+					core.push_message(&state, fmt.tprintf("Selected spell: %s.", core.SPELL_DEFS[sp].name))
+				}
+			}
+
+			// manual targeting / attack with 'f'
+			if is_key_pressed(.F) {
+				start_targeting(&state)
+			}
+
+			// quick cast active spell with 'z'
+			if is_key_pressed(.Z) {
+				if state.spell_count == 0 {
+					core.push_message(&state, "You don't know any spells!")
+				} else {
+					start_targeting(&state)
+				}
+			}
+
+			// directional movement (arrows & vi keys)
+			dx, dy: int
+			if is_key_pressed(.UP) || is_key_pressed(.K) {
+				dy = -1; held_dx = 0; held_dy = -1
+			} else if is_key_pressed(.DOWN) || is_key_pressed(.J) {
+				dy = 1; held_dx = 0; held_dy = 1
+			} else if is_key_pressed(.LEFT) || is_key_pressed(.H) {
+				dx = -1; held_dx = -1; held_dy = 0
+			} else if is_key_pressed(.RIGHT) || is_key_pressed(.L) {
+				dx = 1; held_dx = 1; held_dy = 0
+			}
+
+			// stair interaction:
+			// go down: '>' (Shift+PERIOD) or KEY_PAGE_DOWN
+			// go up:   '<' (Shift+COMMA)  or KEY_PAGE_UP
+			if (shift_held && is_key_pressed(.PERIOD)) || is_key_pressed(.PAGE_DOWN) {
+				if core.go_down_stairs(&state) {
+					core.auto_save_game(&state)
+				}
+			} else if (shift_held && is_key_pressed(.COMMA)) || is_key_pressed(.PAGE_UP) {
+				if core.go_up_stairs(&state) {
+					core.auto_save_game(&state)
+				}
+			}
+
+			// keyboard shortcuts for equipment slots unequip (keys 1-8)
+			for key_idx in 0 ..< int(core.EQUIPMENT_SLOT_COUNT) {
+				key := rl.KeyboardKey(int(rl.KeyboardKey.ONE) + key_idx)
+				if is_key_pressed(key) {
+					slot := core.Equipment_Slot(key_idx)
+					eq_item := state.player_inventory.equipment[slot]
+					if eq_item != .None {
+						if core.unequip_item(&state.player_inventory, slot) {
+							core.recompute_player_stats(&state)
+							core.push_message(
+								&state,
+								fmt.tprintf("Unequipped %s.", core.ITEM_DEFS[eq_item].name),
+							)
+							core.auto_save_game(&state)
+						} else {
+							core.push_message(&state, "Inventory is full! Cannot unequip.")
+						}
+					}
+				}
+			}
+
+			// movement repeat logic
+			if dx != 0 || dy != 0 {
+				hold_timer = 0
+			} else {
+				is_still_held := false
+				if held_dy == -1 && (rl.IsKeyDown(.UP) || rl.IsKeyDown(.K)) do is_still_held = true
+				if held_dy == 1 && (rl.IsKeyDown(.DOWN) || rl.IsKeyDown(.J)) do is_still_held = true
+				if held_dx == -1 && (rl.IsKeyDown(.LEFT) || rl.IsKeyDown(.H)) do is_still_held = true
+				if held_dx == 1 && (rl.IsKeyDown(.RIGHT) || rl.IsKeyDown(.L)) do is_still_held = true
+
+				if is_still_held {
+					hold_timer += rl.GetFrameTime()
+					if hold_timer >= first_delay {
+						dx = held_dx
+						dy = held_dy
+						hold_timer -= repeat_delay
+					}
+				} else {
+					held_dx = 0
+					held_dy = 0
+					hold_timer = 0
+				}
+			}
+
+			if (dx != 0 || dy != 0) && state.is_running {
+				prev_turns := state.turn_count
+				core.step_turn(&state, dx, dy)
+				if state.player_hp > 0 && state.turn_count != prev_turns && state.turn_count % 10 == 0 {
+					core.auto_save_game(&state)
+				}
 			}
 		}
 
-		if dx != 0 || dy != 0 {
-			prev_turns := state.turn_count
-			core.step_turn(&state, dx, dy)
-			if state.turn_count != prev_turns && state.turn_count % 10 == 0 {
-				core.auto_save_game(&state)
-			}
+		// check for player death
+		if !state.is_running || state.player_hp <= 0 {
+			menu.last_morgue = core.record_morgue_entry(&state)
+			core.delete_save_file()
+			core.destroy_game(&state)
+			game_active = false
+			refresh_menu_save_preview(&menu)
+			menu.screen = .Game_Over
+			continue
 		}
 
 		// update camera target and center inside game viewport
@@ -277,6 +409,16 @@ main :: proc() {
 			rl.WHITE,
 		)
 
+		// draw targeting overlay reticle and line of fire
+		if state.is_targeting {
+			draw_targeting_overlay(&state, tile_size)
+		}
+
+		// draw active projectile in flight
+		if state.projectile_count > 0 {
+			draw_active_projectiles(&state, tile_size)
+		}
+
 		rl.EndMode2D()
 		rl.EndScissorMode()
 
@@ -284,7 +426,25 @@ main :: proc() {
 		draw_event_log_box(layout.event_box, &state)
 
 		// draw right pane: stats (top)
-		draw_stats_panel(layout.stats_panel, &state)
+		stats_act := draw_stats_panel(layout.stats_panel, &state)
+		#partial switch stats_act {
+		case .Cast_Spell:
+			if state.spell_count > 0 && core.cast_spell(&state, state.selected_spell) {
+				if state.player_hp > 0 {
+					core.auto_save_game(&state)
+				}
+			}
+		case .Open_Menu:
+			if state.player_hp > 0 {
+				core.auto_save_game(&state)
+			}
+			refresh_menu_save_preview(&menu)
+			menu.main_cursor = menu.has_save ? 1 : 0
+			menu.screen = .Main_Menu
+		case .Open_Help:
+			menu.return_screen = .Playing
+			menu.screen = .Controls_Help
+		}
 
 		// draw right pane: inventory grid (bottom)
 		inv_act := draw_inventory_panel(layout.inventory_panel, &state, &selected_slot)
@@ -292,11 +452,22 @@ main :: proc() {
 		#partial switch inv_act {
 		case .Use_Or_Equip:
 			if selected_slot.kind == .Backpack {
+				item_k := state.player_inventory.items[selected_slot.index]
+				if state.player_species == .Felid && item_k != .None {
+					item_d := core.ITEM_DEFS[item_k]
+					if item_d.category == .Equipment && item_d.slot != .Ring && item_d.slot != .Amulet {
+						core.push_message(&state, "As a Felid, your paws cannot wield weapons or wear armor!")
+						rl.EndDrawing()
+						continue
+					}
+				}
 				success, msg := core.use_inventory_item(
 					&state.player_inventory,
 					selected_slot.index,
 					&state.player_hp,
 					state.player_max_hp,
+					&state.player_mp,
+					state.player_max_mp,
 				)
 				if success {
 					core.recompute_player_stats(&state)
