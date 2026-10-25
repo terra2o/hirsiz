@@ -20,29 +20,35 @@ Projectile_Kind :: enum u8 {
 }
 
 Projectile :: struct {
-	kind:             Projectile_Kind,
-	spell:            Spell_Kind,
-	glyph:            rune,
-	color:            Color_RGB,
-	start_pos:        Point2D,
-	current_pos:      Point2D,
-	target_pos:       Point2D,
-	dir_x:            int,
-	dir_y:            int,
-	path:             [MAX_PROJECTILE_PATH]Point2D,
-	path_len:         int,
-	step_index:       int,
-	damage:           int,
-	piercing:         bool,
-	aoe_radius:       int,
-	bounces_left:     int,
-	lifetime_steps:   int,
-	source_label:     string,
-	done:             bool,
+	kind:           Projectile_Kind,
+	spell:          Spell_Kind,
+	glyph:          rune,
+	color:          Color_RGB,
+	start_pos:      Point2D,
+	current_pos:    Point2D,
+	target_pos:     Point2D,
+	dir_x:          int,
+	dir_y:          int,
+	path:           [MAX_PROJECTILE_PATH]Point2D,
+	path_len:       int,
+	step_index:     int,
+	damage:         int,
+	piercing:       bool,
+	aoe_radius:     int,
+	bounces_left:   int,
+	lifetime_steps: int,
+	source_label:   string,
+	done:           bool,
 }
 
 // traces grid line coordinates between endpoints
-trace_line :: proc(x0, y0, x1, y1: int, max_range: int = MAX_PROJECTILE_PATH) -> ([MAX_PROJECTILE_PATH]Point2D, int) {
+trace_line :: proc(
+	x0, y0, x1, y1: int,
+	max_range: int = MAX_PROJECTILE_PATH,
+) -> (
+	[MAX_PROJECTILE_PATH]Point2D,
+	int,
+) {
 	path: [MAX_PROJECTILE_PATH]Point2D
 	count := 0
 
@@ -81,7 +87,12 @@ check_line_of_fire :: proc(
 	d: ^Dungeon,
 	x0, y0, x1, y1: int,
 	max_range: int = MAX_PROJECTILE_PATH,
-) -> (clear: bool, hit_point: Point2D, path: [MAX_PROJECTILE_PATH]Point2D, path_len: int) {
+) -> (
+	clear: bool,
+	hit_point: Point2D,
+	path: [MAX_PROJECTILE_PATH]Point2D,
+	path_len: int,
+) {
 	path, path_len = trace_line(x0, y0, x1, y1, max_range)
 	clear = true
 	hit_point = Point2D{x1, y1}
@@ -108,11 +119,7 @@ spawn_foxfire_wisps :: proc(state: ^Game_State, spell: Spell_Kind) -> bool {
 	open_adj: [8]Point2D
 	open_count := 0
 
-	adj_offsets := [8][2]int{
-		{-1, -1}, {0, -1}, {1, -1},
-		{-1,  0},          {1,  0},
-		{-1,  1}, {0,  1}, {1,  1},
-	}
+	adj_offsets := [8][2]int{{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}}
 
 	for off in adj_offsets {
 		nx := state.player_x + off[0]
@@ -134,7 +141,8 @@ spawn_foxfire_wisps :: proc(state: ^Game_State, spell: Spell_Kind) -> bool {
 	dmg := compute_spell_damage(state, spell)
 
 	nearest := find_nearest_visible_enemy(state, 8)
-	target_pos := nearest != nil ? Point2D{nearest.x, nearest.y} : Point2D{state.player_x, state.player_y}
+	target_pos :=
+		nearest != nil ? Point2D{nearest.x, nearest.y} : Point2D{state.player_x, state.player_y}
 
 	for i in 0 ..< wisps_to_spawn {
 		if state.projectile_count >= MAX_ACTIVE_PROJECTILES do break
@@ -169,7 +177,10 @@ create_spell_projectile :: proc(
 	state: ^Game_State,
 	spell: Spell_Kind,
 	target_x, target_y: int,
-) -> (Projectile, bool) {
+) -> (
+	Projectile,
+	bool,
+) {
 	proj: Projectile
 	if spell == .None do return proj, false
 
@@ -256,7 +267,14 @@ create_spell_projectile :: proc(
 	}
 
 	max_r := min(def.range + 1, MAX_PROJECTILE_PATH)
-	_, _, path, path_len := check_line_of_fire(&state.dungeon, state.player_x, state.player_y, target_x, target_y, max_r)
+	_, _, path, path_len := check_line_of_fire(
+		&state.dungeon,
+		state.player_x,
+		state.player_y,
+		target_x,
+		target_y,
+		max_r,
+	)
 	proj.path = path
 	proj.path_len = path_len
 
@@ -287,7 +305,13 @@ step_single_projectile :: proc(state: ^Game_State, proj: ^Projectile) -> bool {
 		if proj.current_pos.x == proj.target_pos.x && proj.current_pos.y == proj.target_pos.y {
 			hit_e := find_enemy_at(d, proj.current_pos.x, proj.current_pos.y)
 			if hit_e != nil {
-				damage_enemy_with_spell(state, hit_e, proj.damage, proj.piercing, proj.source_label)
+				damage_enemy_with_spell(
+					state,
+					hit_e,
+					proj.damage,
+					proj.piercing,
+					proj.source_label,
+				)
 			}
 			proj.done = true
 			return true
@@ -304,10 +328,12 @@ step_single_projectile :: proc(state: ^Game_State, proj: ^Projectile) -> bool {
 		// navigate around corners if straight diagonal is blocked
 		next_tile := dungeon_get_tile(d, next_x, next_y)
 		if !next_tile.walkable {
-			if step_x != 0 && dungeon_get_tile(d, proj.current_pos.x + step_x, proj.current_pos.y).walkable {
+			if step_x != 0 &&
+			   dungeon_get_tile(d, proj.current_pos.x + step_x, proj.current_pos.y).walkable {
 				next_x = proj.current_pos.x + step_x
 				next_y = proj.current_pos.y
-			} else if step_y != 0 && dungeon_get_tile(d, proj.current_pos.x, proj.current_pos.y + step_y).walkable {
+			} else if step_y != 0 &&
+			   dungeon_get_tile(d, proj.current_pos.x, proj.current_pos.y + step_y).walkable {
 				next_x = proj.current_pos.x
 				next_y = proj.current_pos.y + step_y
 			} else {
@@ -321,7 +347,13 @@ step_single_projectile :: proc(state: ^Game_State, proj: ^Projectile) -> bool {
 
 		hit_enemy := find_enemy_at(d, next_x, next_y)
 		if hit_enemy != nil {
-			damage_enemy_with_spell(state, hit_enemy, proj.damage, proj.piercing, proj.source_label)
+			damage_enemy_with_spell(
+				state,
+				hit_enemy,
+				proj.damage,
+				proj.piercing,
+				proj.source_label,
+			)
 			proj.done = true
 			return true
 		}
@@ -432,7 +464,14 @@ step_single_projectile :: proc(state: ^Game_State, proj: ^Projectile) -> bool {
 
 			if best_next != nil {
 				push_message(state, "The lightning arcs to another foe!")
-				_, _, arc_path, arc_len := check_line_of_fire(d, next_pt.x, next_pt.y, best_next.x, best_next.y, 4)
+				_, _, arc_path, arc_len := check_line_of_fire(
+					d,
+					next_pt.x,
+					next_pt.y,
+					best_next.x,
+					best_next.y,
+					4,
+				)
 				proj.path = arc_path
 				proj.path_len = arc_len
 				proj.step_index = 0
@@ -529,7 +568,10 @@ resolve_aoe_explosion :: proc(
 			if tx == state.player_x && ty == state.player_y {
 				self_dmg := max(1, damage - state.player_defense / 2)
 				state.player_hp -= self_dmg
-				push_message(state, fmt.tprintf("You are caught in the blast for %d damage!", self_dmg))
+				push_message(
+					state,
+					fmt.tprintf("You are caught in the blast for %d damage!", self_dmg),
+				)
 			}
 		}
 	}

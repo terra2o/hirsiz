@@ -34,15 +34,15 @@ Spell_Kind :: enum u8 {
 }
 
 Spell_Def :: struct {
-	kind:            Spell_Kind,
-	name:            string,
-	school:          string,
-	mp_cost:         int,
-	range:           int,
-	power_cap:       int,
-	pierce_defense:  bool,
-	target_mode:     Spell_Target_Mode,
-	desc:            string,
+	kind:           Spell_Kind,
+	name:           string,
+	school:         string,
+	mp_cost:        int,
+	range:          int,
+	power_cap:      int,
+	pierce_defense: bool,
+	target_mode:    Spell_Target_Mode,
+	desc:           string,
 }
 
 SPELL_DEFS := [Spell_Kind]Spell_Def {
@@ -371,13 +371,19 @@ cast_spell :: proc(state: ^Game_State, spell_slot: int) -> bool {
 	def := SPELL_DEFS[spell]
 
 	// self targeted spells, radial burst, and wisps do not require selecting an external tile
-	if def.target_mode == .Self_Berserk || def.target_mode == .Blink_Tile || def.target_mode == .Radial_Burst || spell == .Foxfire {
+	if def.target_mode == .Self_Berserk ||
+	   def.target_mode == .Blink_Tile ||
+	   def.target_mode == .Radial_Burst ||
+	   spell == .Foxfire {
 		return cast_spell_at(state, spell_slot, state.player_x, state.player_y)
 	}
 
 	target := find_nearest_visible_enemy(state, def.range)
 	if target == nil {
-		push_message(state, fmt.tprintf("No visible target in range (%d) for %s.", def.range, def.name))
+		push_message(
+			state,
+			fmt.tprintf("No visible target in range (%d) for %s.", def.range, def.name),
+		)
 		return false
 	}
 	return cast_spell_at(state, spell_slot, target.x, target.y)
@@ -398,18 +404,26 @@ cast_spell_at :: proc(state: ^Game_State, spell_slot: int, target_x, target_y: i
 		}
 	} else {
 		if state.player_mp < def.mp_cost {
-			push_message(state, fmt.tprintf("Not enough MP to cast %s! (Need %d MP)", def.name, def.mp_cost))
+			push_message(
+				state,
+				fmt.tprintf("Not enough MP to cast %s! (Need %d MP)", def.name, def.mp_cost),
+			)
 			return false
 		}
 	}
 
 	// validate range for targeted spells
-	if def.target_mode == .Nearest_Enemy || def.target_mode == .Area_Blast || def.target_mode == .Chain_Arc {
+	if def.target_mode == .Nearest_Enemy ||
+	   def.target_mode == .Area_Blast ||
+	   def.target_mode == .Chain_Arc {
 		dx := abs(target_x - state.player_x)
 		dy := abs(target_y - state.player_y)
 		dist := max(dx, dy)
 		if dist > def.range {
-			push_message(state, fmt.tprintf("Target is beyond range (%d) for %s.", def.range, def.name))
+			push_message(
+				state,
+				fmt.tprintf("Target is beyond range (%d) for %s.", def.range, def.name),
+			)
 			return false
 		}
 		if def.range == 1 && dist == 0 {
@@ -443,7 +457,10 @@ cast_spell_at :: proc(state: ^Game_State, spell_slot: int, target_x, target_y: i
 	case .Radial_Burst:
 		// detonates force wave centered on caster hitting all foes within range
 		consume_spell_cost(state, def.mp_cost, uses_hp)
-		push_message(state, fmt.tprintf("You cast %s! A ring of force erupts around you!", def.name))
+		push_message(
+			state,
+			fmt.tprintf("You cast %s! A ring of force erupts around you!", def.name),
+		)
 
 		d := &state.dungeon
 		hit_any := false
@@ -467,7 +484,9 @@ cast_spell_at :: proc(state: ^Game_State, spell_slot: int, target_x, target_y: i
 						ky := enemy.y + (dy > 0 ? 1 : (dy < 0 ? -1 : 0))
 						if dungeon_in_bounds(d, kx, ky) {
 							ktile := dungeon_get_tile(d, kx, ky)
-							if ktile.walkable && find_enemy_at(d, kx, ky) == nil && !(kx == state.player_x && ky == state.player_y) {
+							if ktile.walkable &&
+							   find_enemy_at(d, kx, ky) == nil &&
+							   !(kx == state.player_x && ky == state.player_y) {
 								enemy.x = kx
 								enemy.y = ky
 							}
@@ -514,7 +533,10 @@ cast_spell_at :: proc(state: ^Game_State, spell_slot: int, target_x, target_y: i
 		state.player_hp = min(state.player_max_hp, state.player_hp + heal)
 		state.berserk_turns = 8
 		recompute_player_stats(state)
-		push_message(state, fmt.tprintf("A red film covers your vision! (+%d HP, +4 Attack for 8 turns)", heal))
+		push_message(
+			state,
+			fmt.tprintf("A red film covers your vision! (+%d HP, +4 Attack for 8 turns)", heal),
+		)
 	}
 
 	state.player_last_attack = 0

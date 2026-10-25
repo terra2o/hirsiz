@@ -528,17 +528,17 @@ Background :: enum u8 {
 BACKGROUND_COUNT :: len(Background)
 
 Background_Def :: struct {
-	kind:          Background,
-	name:          string,
-	abbrev:        string,
-	category:      Background_Category,
-	str_mod:       int,
-	int_mod:       int,
-	dex_mod:       int,
-	starting_eq:   [4]Item_Kind,
-	starting_bag:  [4]Item_Kind,
-	spells:        [3]Spell_Kind,
-	desc:          string,
+	kind:         Background,
+	name:         string,
+	abbrev:       string,
+	category:     Background_Category,
+	str_mod:      int,
+	int_mod:      int,
+	dex_mod:      int,
+	starting_eq:  [4]Item_Kind,
+	starting_bag: [4]Item_Kind,
+	spells:       [3]Spell_Kind,
+	desc:         string,
 }
 
 BACKGROUND_DEFS := [Background]Background_Def {
@@ -955,7 +955,14 @@ character_combo_abbrev :: proc(sp: Species, bg: Background) -> string {
 character_full_title :: proc(name: string, sp: Species, bg: Background) -> string {
 	sp_def := SPECIES_DEFS[sp]
 	bg_def := BACKGROUND_DEFS[bg]
-	return fmt.tprintf("%s the %s %s (%s%s)", name, sp_def.name, bg_def.name, sp_def.abbrev, bg_def.abbrev)
+	return fmt.tprintf(
+		"%s the %s %s (%s%s)",
+		name,
+		sp_def.name,
+		bg_def.name,
+		sp_def.abbrev,
+		bg_def.abbrev,
+	)
 }
 
 compute_starting_stats :: proc(
