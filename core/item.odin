@@ -335,6 +335,12 @@ EQUIPMENT_SLOT_NAMES := [Equipment_Slot]string {
 
 MAX_INVENTORY_ITEMS :: 16
 
+Ground_Item :: struct {
+	kind: Item_Kind,
+	x:    int,
+	y:    int,
+}
+
 Inventory :: struct {
 	items:      [MAX_INVENTORY_ITEMS]Item_Kind,
 	item_count: int,
@@ -481,4 +487,22 @@ use_inventory_item :: proc(
 		return false, "You cannot use this item."
 	}
 	return false, ""
+}
+
+// add an item to the dungeon floor
+drop_item_on_ground :: proc(d: ^Dungeon, item: Item_Kind, x, y: int) -> bool {
+	if item == .None do return false
+	append(&d.ground_items, Ground_Item{kind = item, x = x, y = y})
+	return true
+}
+
+// count of items at given location
+ground_items_count_at :: proc(d: ^Dungeon, x, y: int) -> int {
+	count := 0
+	for it in d.ground_items {
+		if it.x == x && it.y == y {
+			count += 1
+		}
+	}
+	return count
 }

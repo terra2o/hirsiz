@@ -336,11 +336,12 @@ award_enemy_loot_and_kill_msg :: proc(
 		}
 	}
 
-	if loot_item != .None && inventory_add(&state.player_inventory, loot_item) {
+	if loot_item != .None {
+		drop_item_on_ground(&state.dungeon, loot_item, enemy.x, enemy.y)
 		item_d := ITEM_DEFS[loot_item]
 		push_message(
 			state,
-			fmt.tprintf("You kill %s! Found %s (+%d gold).", def.name, item_d.name, gold_gain),
+			fmt.tprintf("You kill %s! It drops %s (+%d gold).", def.name, item_d.name, gold_gain),
 		)
 	} else {
 		push_message(
@@ -514,6 +515,27 @@ step_turn :: proc(state: ^Game_State, dx: int, dy: int) {
 			push_message(state, "There is a staircase leading up here (press < to ascend).")
 		}
 
+		item_count_here := ground_items_count_at(&state.dungeon, state.player_x, state.player_y)
+		if item_count_here == 1 {
+			for it in state.dungeon.ground_items {
+				if it.x == state.player_x && it.y == state.player_y {
+					push_message(
+						state,
+						fmt.tprintf("You see %s here (press ',' to pick up).", ITEM_DEFS[it.kind].name),
+					)
+					break
+				}
+			}
+		} else if item_count_here > 1 {
+			push_message(
+				state,
+				fmt.tprintf(
+					"There are %d items here (press ',' to pick up).",
+					item_count_here,
+				),
+			)
+		}
+
 		check_regen(state)
 		step_all_projectiles(state)
 		step_enemy_turns(state)
@@ -580,3 +602,63 @@ go_up_stairs :: proc(state: ^Game_State) -> bool {
 	push_message(state, "You climb back up the stairs.")
 	return true
 }
+
+// player attempts to pick up an item on the current tile
+player_pick_up :: proc(state: ^Game_State) -> bool {
+	// look backwards from end to pick up most recently dropped item
+	found_idx := -1
+	for i := len(state.dungeon.ground_items) - 1; i >= 0; i -= 1 {
+		it := state.dungeon.ground_items[i]
+		if it.x == state.player_x && it.y == state.player_y {
+			found_idx = i
+			break
+		}
+	}
+
+	if found_idx == -1 {
+		push_message(state, "There is nothing here to pick up.")
+		return false
+	}
+
+	item := state.dungeon.ground_items[found_idx].kind
+	item_name := ITEM_DEFS[item].name
+
+	if state.player_inventory.item_count >= MAX_INVENTORY_ITEMS {
+		push_message(state, fmt.tprintf("Your inventory is full! Cannot pick up %s.", item_name))
+		return false
+	}
+
+	if !inventory_add(&state.player_inventory, item) {
+		push_message(state, "Your inventory is full!")
+		return false
+	}
+
+	ordered_remove(&state.dungeon.ground_items, found_idx)
+	push_message(state, fmt.tprintf("You pick up %s.", item_name))
+
+	state.turn_count += 1
+	check_regen(state)
+	step_all_projectiles(state)
+	step_enemy_turns(state)
+	state.floors[state.depth] = state.dungeon
+	return true
+}
+
+// player drops an item from inventory to the ground
+player_drop_item :: proc(state: ^Game_State, inv_idx: int) -> bool {
+	if inv_idx < 0 || inv_idx >= MAX_INVENTORY_ITEMS do return false
+	item := inventory_remove_at(&state.player_inventory, inv_idx)
+	if item == .None do return false
+
+	item_name := ITEM_DEFS[item].name
+	drop_item_on_ground(&state.dungeon, item, state.player_x, state.player_y)
+	push_message(state, fmt.tprintf("You drop %s.", item_name))
+
+	state.turn_count += 1
+	check_regen(state)
+	step_all_projectiles(state)
+	step_enemy_turns(state)
+	state.floors[state.depth] = state.dungeon
+	return true
+}
+

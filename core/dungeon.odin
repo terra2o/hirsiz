@@ -122,6 +122,7 @@ Dungeon :: struct {
 	explored:        []bool,
 	rooms:           [dynamic]Room,
 	enemies:         [dynamic]Enemy,
+	ground_items:    [dynamic]Ground_Item,
 	stairs_up_pos:   [2]int,
 	stairs_down_pos: [2]int,
 }
@@ -132,6 +133,7 @@ destroy_dungeon :: proc(d: ^Dungeon) {
 	delete(d.explored)
 	delete(d.rooms)
 	delete(d.enemies)
+	delete(d.ground_items)
 }
 
 dungeon_in_bounds :: proc(d: ^Dungeon, x, y: int) -> bool {

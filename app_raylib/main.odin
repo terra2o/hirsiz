@@ -248,6 +248,13 @@ main :: proc() {
 				}
 			}
 
+			// pick up item from ground: ',' (without shift) or 'g'
+			if (!shift_held && is_key_pressed(.COMMA)) || is_key_pressed(.G) {
+				if core.player_pick_up(&state) {
+					core.auto_save_game(&state)
+				}
+			}
+
 			// keyboard shortcuts for equipment slots unequip (keys 1-8)
 			for key_idx in 0 ..< int(core.EQUIPMENT_SLOT_COUNT) {
 				key := rl.KeyboardKey(int(rl.KeyboardKey.ONE) + key_idx)
@@ -395,6 +402,27 @@ main :: proc() {
 			}
 		}
 
+		for it in d.ground_items {
+			idx := it.y * d.width + it.x
+			if idx < 0 || idx >= len(d.visible) do continue
+			if !d.visible[idx] do continue
+
+			vis := ITEM_VISUALS[it.kind]
+			ix := i32(it.x) * tile_size
+			iy := i32(it.y) * tile_size
+
+			glyph_str: [2]u8 = {u8(vis.glyph), 0}
+			item_font_size :: 24
+			tw := measure_text_bold(cstring(&glyph_str[0]), item_font_size)
+			draw_text_bold(
+				cstring(&glyph_str[0]),
+				ix + (tile_size - tw) / 2,
+				iy + (tile_size - item_font_size) / 2,
+				item_font_size,
+				vis.color,
+			)
+		}
+
 		for &enemy in d.enemies {
 			if !enemy.is_alive do continue
 
@@ -525,6 +553,14 @@ main :: proc() {
 					} else {
 						core.push_message(&state, "Inventory is full! Cannot unequip.")
 					}
+				}
+			}
+		case .Drop:
+			if selected_slot.kind == .Backpack &&
+			   selected_slot.index >= 0 &&
+			   selected_slot.index < core.MAX_INVENTORY_ITEMS {
+				if core.player_drop_item(&state, selected_slot.index) {
+					core.auto_save_game(&state)
 				}
 			}
 		}

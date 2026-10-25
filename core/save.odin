@@ -6,14 +6,22 @@ import "core:os"
 import "core:path/filepath"
 
 SAVE_MAGIC :: [4]u8{'R', 'O', 'G', 'U'}
-CURRENT_SAVE_VERSION: u32 : 5
+CURRENT_SAVE_VERSION: u32 : 6
 GAME_NAME :: "hirsiz"
 MAX_ENEMIES_PER_FLOOR :: 64
+MAX_GROUND_ITEMS_PER_FLOOR :: 64
 EXPLORED_MAP_BYTES :: (DUNGEON_WIDTH * DUNGEON_HEIGHT + 7) / 8
 
 Inventory_Record :: struct #packed {
 	items:     [MAX_INVENTORY_ITEMS]u8,
 	equipment: [EQUIPMENT_SLOT_COUNT]u8,
+}
+
+Ground_Item_Record :: struct #packed {
+	kind: u8,
+	_pad: u8,
+	x:    i16,
+	y:    i16,
 }
 
 Enemy_Record :: struct #packed {
@@ -58,11 +66,13 @@ Player_State :: struct #packed {
 }
 
 Save_Data :: struct #packed {
-	header:         Save_Header,
-	player:         Player_State,
-	enemy_count:    u32,
-	enemies:        [MAX_ENEMIES_PER_FLOOR]Enemy_Record,
-	explored_tiles: [EXPLORED_MAP_BYTES]u8,
+	header:            Save_Header,
+	player:            Player_State,
+	enemy_count:       u32,
+	ground_item_count: u32,
+	enemies:           [MAX_ENEMIES_PER_FLOOR]Enemy_Record,
+	ground_items:      [MAX_GROUND_ITEMS_PER_FLOOR]Ground_Item_Record,
+	explored_tiles:    [EXPLORED_MAP_BYTES]u8,
 }
 
 get_save_directory :: proc(allocator := context.allocator) -> (string, bool) {
@@ -283,6 +293,17 @@ auto_save_game :: proc(state: ^Game_State) -> bool {
 		}
 	}
 
+	ground_count := min(len(state.dungeon.ground_items), MAX_GROUND_ITEMS_PER_FLOOR)
+	data.ground_item_count = u32(ground_count)
+	for i in 0 ..< ground_count {
+		it := state.dungeon.ground_items[i]
+		data.ground_items[i] = Ground_Item_Record {
+			kind = u8(it.kind),
+			x    = i16(it.x),
+			y    = i16(it.y),
+		}
+	}
+
 	tile_count := min(len(state.dungeon.explored), DUNGEON_WIDTH * DUNGEON_HEIGHT)
 	for i in 0 ..< tile_count {
 		if state.dungeon.explored[i] {
@@ -343,6 +364,20 @@ restore_game_from_save :: proc(save: ^Save_Data) -> Game_State {
 					inventory = enemy_inv,
 				},
 			)
+		}
+	}
+
+	clear(&state.dungeon.ground_items)
+	if save.ground_item_count > 0 {
+		item_count := min(int(save.ground_item_count), MAX_GROUND_ITEMS_PER_FLOOR)
+		for i in 0 ..< item_count {
+			rec := &save.ground_items[i]
+			if rec.kind != 0 {
+				append(
+					&state.dungeon.ground_items,
+					Ground_Item{kind = Item_Kind(rec.kind), x = int(rec.x), y = int(rec.y)},
+				)
+			}
 		}
 	}
 

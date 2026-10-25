@@ -223,21 +223,27 @@ draw_inventory_panel :: proc(
 
 	// action buttons
 	btn_gap: f32 = slot_gap
-	btn_w := (panel_inner_w - btn_gap) / 2.0
-	btn_font := math.clamp(i32(btn_h * 0.54), 9, 20)
+	btn_w := (panel_inner_w - btn_gap * 2.0) / 3.0
+	btn_font := math.clamp(i32(btn_h * 0.50), 8, 18)
 
 	can_use := (sel.kind == .Backpack && selected_item != .None)
 	can_unequip := (sel.kind == .Equip && selected_item != .None)
+	can_drop := (sel.kind == .Backpack && selected_item != .None)
 
 	btn1_rect := rl.Rectangle{pad_x, cur_y, btn_w, btn_h}
 	btn2_rect := rl.Rectangle{pad_x + btn_w + btn_gap, cur_y, btn_w, btn_h}
+	btn3_rect := rl.Rectangle{pad_x + (btn_w + btn_gap) * 2.0, cur_y, btn_w, btn_h}
 
-	if draw_button(btn1_rect, "Use / Equip", can_use, btn_font) {
+	if draw_button(btn1_rect, "Use/Equip", can_use, btn_font) {
 		action = .Use_Or_Equip
 	}
 
 	if draw_button(btn2_rect, "Unequip", can_unequip, btn_font) {
 		action = .Unequip
+	}
+
+	if draw_button(btn3_rect, "Drop", can_drop, btn_font) {
+		action = .Drop
 	}
 
 	return action
