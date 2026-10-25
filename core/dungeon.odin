@@ -25,12 +25,12 @@ Color_RGB :: struct {
 	r, g, b: u8,
 }
 
-COLOR_FLOOR :: Color_RGB{180, 160, 130}
-COLOR_WALL :: Color_RGB{90, 80, 95}
-COLOR_DOOR :: Color_RGB{165, 110, 42}
-COLOR_STAIRS_UP :: Color_RGB{100, 220, 255}
-COLOR_STAIRS_DOWN :: Color_RGB{255, 215, 0}
-COLOR_EMPTY :: Color_RGB{10, 10, 15}
+COLOR_FLOOR :: Color_RGB{40, 36, 46}
+COLOR_WALL :: Color_RGB{24, 22, 30}
+COLOR_DOOR :: Color_RGB{95, 62, 36}
+COLOR_STAIRS_UP :: Color_RGB{70, 160, 190}
+COLOR_STAIRS_DOWN :: Color_RGB{190, 150, 40}
+COLOR_EMPTY :: Color_RGB{8, 8, 12}
 
 tile_to_ascii :: proc(type: Tile_Type) -> rune {
 	switch type {

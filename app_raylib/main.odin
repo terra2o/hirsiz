@@ -386,10 +386,10 @@ main :: proc() {
 						glyph_col,
 					)
 				} else if tile.type == .Wall {
-					line_col := is_vis ? rl.Color{45, 40, 50, 255} : rl.Color{20, 18, 25, 255}
+					line_col := is_vis ? rl.Color{16, 14, 20, 255} : rl.Color{10, 9, 14, 255}
 					rl.DrawRectangleLines(i32(rect.x), i32(rect.y), tile_size, tile_size, line_col)
 				} else if tile.type == .Floor {
-					line_col := is_vis ? rl.Color{160, 140, 115, 60} : rl.Color{60, 50, 45, 40}
+					line_col := is_vis ? rl.Color{55, 50, 65, 50} : rl.Color{22, 20, 28, 40}
 					rl.DrawRectangleLines(i32(rect.x), i32(rect.y), tile_size, tile_size, line_col)
 				}
 			}
