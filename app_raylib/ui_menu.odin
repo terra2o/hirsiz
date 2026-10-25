@@ -1033,22 +1033,10 @@ draw_controls_help_screen :: proc(m: ^Menu_State, screen_w, screen_h: i32) {
 		{false, "  > or PageDown            Descend downstairs (>) to the next dungeon floor"},
 		{false, "  < or PageUp              Ascend upstairs (<) to the previous dungeon floor"},
 		{true, "MAGIC & COMBAT TARGETING"},
-		{
-			false,
-			"  f                        Target mode: aim attack at adjacent foe or fire spell at cell",
-		},
-		{
-			false,
-			"  z                        Target & cast selected spell along line-of-fire",
-		},
-		{
-			false,
-			"  Tab (in target mode)     Cycle target between visible monsters",
-		},
-		{
-			false,
-			"  [ and ]                  Cycle active spell slot",
-		},
+		{false, "  f                        Target mode: start aiming from player position"},
+		{false, "  z                        Show currently queued spell to cast"},
+		{false, "  Tab (in target mode)     Cycle target between visible monsters"},
+		{false, "  [ and ]                  Cycle active spell slot"},
 		{false, "  Intelligence (Int)       Increases maximum MP and scales spell damage"},
 		{
 			false,

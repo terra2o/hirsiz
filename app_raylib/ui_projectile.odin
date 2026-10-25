@@ -12,18 +12,15 @@ Targeting_Result :: enum {
 	Cancelled,
 }
 
-// enters targeting mode, positioning reticle at nearest visible enemy or player
+// enters targeting mode, positioning reticle at player position
 start_targeting :: proc(state: ^core.Game_State) {
 	state.is_targeting = true
-	nearest := core.find_nearest_visible_enemy(state, 12)
-	if nearest != nil {
-		state.target_x = nearest.x
-		state.target_y = nearest.y
-	} else {
-		state.target_x = state.player_x
-		state.target_y = state.player_y
-	}
-	core.push_message(state, "Targeting: select direction or target. [Enter/f/z] Fire, [Tab] Next, [Esc] Cancel.")
+	state.target_x = state.player_x
+	state.target_y = state.player_y
+	core.push_message(
+		state,
+		"Targeting: select direction or target. [Enter/f/z] Fire, [Tab] Next, [Esc] Cancel.",
+	)
 }
 
 // cycles through all visible alive enemies
@@ -99,7 +96,10 @@ handle_targeting_input :: proc(state: ^core.Game_State) -> Targeting_Result {
 	}
 
 	// confirm target and execute attack or spell
-	if is_key_pressed(.ENTER) || is_key_pressed(.SPACE) || is_key_pressed(.F) || is_key_pressed(.Z) {
+	if is_key_pressed(.ENTER) ||
+	   is_key_pressed(.SPACE) ||
+	   is_key_pressed(.F) ||
+	   is_key_pressed(.Z) {
 		tx := state.target_x
 		ty := state.target_y
 

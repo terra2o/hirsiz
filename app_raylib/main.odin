@@ -47,6 +47,8 @@ main :: proc() {
 	held_dx: int
 	held_dy: int
 
+	waiting_cast_confirm := false
+
 	selected_slot := Selected_Slot {
 		kind  = .Backpack,
 		index = 0,
@@ -113,6 +115,12 @@ main :: proc() {
 
 		// return to main menu with Escape (including caps-tap via poll_frame_keys), Backspace, or 'm'
 		if is_key_pressed(.ESCAPE) || is_key_pressed(.BACKSPACE) || is_key_pressed(.M) {
+			if waiting_cast_confirm {
+				waiting_cast_confirm = false
+				core.push_message(&state, "Cancelled spell.")
+				for rl.GetCharPressed() != 0 {}
+				continue
+			}
 			if state.player_hp > 0 {
 				core.auto_save_game(&state)
 			}
@@ -180,27 +188,50 @@ main :: proc() {
 
 			// manual targeting / attack with 'f'
 			if is_key_pressed(.F) {
+				waiting_cast_confirm = false
 				start_targeting(&state)
 			}
 
-			// quick cast active spell with 'z'
+			// show spell to cast with 'z' (or confirm with Enter / .)
 			if is_key_pressed(.Z) {
 				if state.spell_count == 0 {
 					core.push_message(&state, "You don't know any spells!")
 				} else {
+					if state.selected_spell >= state.spell_count {
+						state.selected_spell = 0
+					}
+					sp_kind := state.known_spells[state.selected_spell]
+					sp_def := core.SPELL_DEFS[sp_kind]
+					cost_unit := state.player_species == .Djinni ? "HP" : "MP"
+					core.push_message(
+						&state,
+						fmt.tprintf("Casting: %s (%d %s). Confirm with [Enter/.], or [Esc] to cancel.", sp_def.name, sp_def.mp_cost, cost_unit),
+					)
+					waiting_cast_confirm = true
+				}
+			} else if waiting_cast_confirm {
+				if is_key_pressed(.ENTER) || is_key_pressed(.SPACE) || is_key_pressed(.PERIOD) {
+					waiting_cast_confirm = false
 					start_targeting(&state)
+				} else if is_key_pressed(.ESCAPE) || is_key_pressed(.BACKSPACE) {
+					waiting_cast_confirm = false
+					core.push_message(&state, "Cancelled spell.")
 				}
 			}
 
 			// directional movement (arrows & vi keys)
 			dx, dy: int
 			if is_key_pressed(.UP) || is_key_pressed(.K) {
+				waiting_cast_confirm = false
 				dy = -1; held_dx = 0; held_dy = -1
 			} else if is_key_pressed(.DOWN) || is_key_pressed(.J) {
+				waiting_cast_confirm = false
 				dy = 1; held_dx = 0; held_dy = 1
 			} else if is_key_pressed(.LEFT) || is_key_pressed(.H) {
+				waiting_cast_confirm = false
 				dx = -1; held_dx = -1; held_dy = 0
 			} else if is_key_pressed(.RIGHT) || is_key_pressed(.L) {
+				waiting_cast_confirm = false
 				dx = 1; held_dx = 1; held_dy = 0
 			}
 
