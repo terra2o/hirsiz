@@ -339,9 +339,9 @@ draw_main_menu_screen :: proc(m: ^Menu_State, screen_w, screen_h: i32) -> Menu_A
 		enabled:  bool,
 	}
 	items := [6]Menu_Item {
-		{'a', "New Dungeon Crawl  —  Choose Species & Background", true},
+		{'a', "New Dungeon Crawl  -  Choose Species & Background", true},
 		{'b', "Continue Saved Game", m.has_save},
-		{'c', "Seeded Crawl       —  Play a Specific Dungeon Seed", true},
+		{'c', "Seeded Crawl       -  Play a Specific Dungeon Seed", true},
 		{'d', "High Scores & Morgue (Past Characters)", true},
 		{'e', "Dungeon Manual & Keybindings (?)", true},
 		{'q', "Quit to Desktop", true},
@@ -643,7 +643,7 @@ draw_species_select_screen :: proc(m: ^Menu_State, screen_w, screen_h: i32) -> M
 
 draw_background_select_screen :: proc(m: ^Menu_State, screen_w, screen_h: i32) -> Menu_Action {
 	term := centered_terminal_rect(screen_w, screen_h)
-	draw_terminal_frame(term, " CHARACTER CREATION  —  SELECT BACKGROUND ")
+	draw_terminal_frame(term, " CHARACTER CREATION  -  SELECT BACKGROUND ")
 
 	pad_x := term.x + math.clamp(term.width * 0.035, 16.0, 32.0)
 	inner_w := term.width - 2.0 * (pad_x - term.x)
@@ -870,7 +870,7 @@ draw_background_select_screen :: proc(m: ^Menu_State, screen_w, screen_h: i32) -
 
 draw_seed_input_screen :: proc(m: ^Menu_State, screen_w, screen_h: i32) -> Menu_Action {
 	term := centered_terminal_rect(screen_w, screen_h)
-	draw_terminal_frame(term, " SEEDED CRAWL  —  CUSTOM DUNGEON SEED ")
+	draw_terminal_frame(term, " SEEDED CRAWL  -  CUSTOM DUNGEON SEED ")
 
 	pad_x := term.x + math.clamp(term.width * 0.08, 32.0, 72.0)
 	inner_w := term.width - 2.0 * (pad_x - term.x)
