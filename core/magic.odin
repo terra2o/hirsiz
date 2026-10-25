@@ -426,10 +426,6 @@ cast_spell_at :: proc(state: ^Game_State, spell_slot: int, target_x, target_y: i
 			)
 			return false
 		}
-		if def.range == 1 && dist == 0 {
-			push_message(state, fmt.tprintf("Target must be adjacent for %s.", def.name))
-			return false
-		}
 	}
 
 	switch def.target_mode {
