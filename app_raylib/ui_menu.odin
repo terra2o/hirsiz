@@ -469,7 +469,7 @@ trigger_main_menu_index :: proc(m: ^Menu_State, idx: int) -> Menu_Action {
 
 draw_species_select_screen :: proc(m: ^Menu_State, screen_w, screen_h: i32) -> Menu_Action {
 	term := centered_terminal_rect(screen_w, screen_h)
-	draw_terminal_frame(term, " CHARACTER CREATION  —  SELECT SPECIES ")
+	draw_terminal_frame(term, " CHARACTER CREATION  - SELECT SPECIES ")
 
 	pad_x := term.x + math.clamp(term.width * 0.035, 16.0, 32.0)
 	inner_w := term.width - 2.0 * (pad_x - term.x)
